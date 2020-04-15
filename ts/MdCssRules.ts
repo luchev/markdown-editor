@@ -1,5 +1,5 @@
-import { CssRules } from './CssRules';
-import { PropertiesHyphen } from 'csstype';
+import {CssRules} from './CssRules';
+import {PropertiesHyphen} from 'csstype';
 
 /**
  * Markdown theme where the field names represent class names

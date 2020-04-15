@@ -1,4 +1,4 @@
-import { PropertiesHyphen } from 'csstype';
+import {PropertiesHyphen} from 'csstype';
 
 /**
  * Add methods to work with CSS like injecting classes and
@@ -6,7 +6,8 @@ import { PropertiesHyphen } from 'csstype';
  */
 export class CssHelper {
   /**
-   * The newly added style element in the DOM where all the injections arehappening
+   * The newly added style element in the DOM
+   * where all the injections arehappening
    */
   private static styleElement: HTMLStyleElement;
   /**
@@ -25,8 +26,8 @@ export class CssHelper {
     CssHelper.styleElement = document.createElement('style');
     CssHelper.styleElement.type = 'text/css';
     document
-      .getElementsByTagName('head')[0]
-      .appendChild(CssHelper.styleElement);
+        .getElementsByTagName('head')[0]
+        .appendChild(CssHelper.styleElement);
   }
 
   /**
@@ -36,7 +37,8 @@ export class CssHelper {
    */
   static injectCss(identifier: string, properties: PropertiesHyphen): void {
     const cssTextPropertoes = CssHelper.stringifyCSSProperties(properties);
-    CssHelper.styleElement.innerHTML += `${identifier} { ${cssTextPropertoes} } \n`;
+    CssHelper.styleElement.innerHTML +=
+    `${identifier} { ${cssTextPropertoes} } \n`;
   }
 
   /**

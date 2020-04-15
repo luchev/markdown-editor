@@ -1,4 +1,4 @@
-import { PropertiesHyphen } from 'csstype';
+import {PropertiesHyphen} from 'csstype';
 
 /**
  * Theme for the scrollbar

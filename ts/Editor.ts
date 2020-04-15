@@ -1,11 +1,12 @@
-import { Theme } from './Theme';
-import { PropertiesHyphen } from 'csstype';
-import { CssHelper } from './CssHelper';
-import { Formatter } from './Formatter';
-import { DOMHelper } from './DOMHelper';
+import {Theme} from './Theme';
+import {PropertiesHyphen} from 'csstype';
+import {CssHelper} from './CssHelper';
+import {Formatter} from './Formatter';
+import {DOMHelper} from './DOMHelper';
 
 /**
- * Abstraction of the editor as a collection of container, formatter, settings and themes
+ * Abstraction of the editor as a collection of
+ * container, formatter, settings and themes
  */
 export class Editor {
   /**
@@ -24,19 +25,22 @@ export class Editor {
   private menu: HTMLElement = document.createElement('div');
 
   /**
-   * The Id of the original element which is used as a prefix for the Ids of the container, menu and editor
+   * The Id of the original element which is used as a prefix
+   * for the Ids of the container, menu and editor
    */
   private idPrefix: string;
 
   /**
-   * @param {string} containerId HTML element id which will become an ediable div
-   * @param {Formatter} formatter Formatter which determines how the content is stylized
+   * @param {string} containerId HTML element id which
+   * will become an ediable div
+   * @param {Formatter} formatter Formatter
+   * which determines how the content is stylized
    * @param {Theme} theme Collection of theme objects
    */
   constructor(
-    containerId: string,
+      containerId: string,
     private formatter: Formatter,
-    private theme: Theme
+    private theme: Theme,
   ) {
     this.idPrefix = containerId;
     this.initializeContainer(this.idPrefix);
@@ -51,9 +55,9 @@ export class Editor {
   private injectAdditionalCssRules(): void {
     if (this.theme.additionalCssRules) {
       Object.entries(this.theme.additionalCssRules).forEach(
-        ([identifier, properties]: [string, PropertiesHyphen]) => {
-          CssHelper.injectCss(identifier, properties);
-        }
+          ([identifier, properties]: [string, PropertiesHyphen]) => {
+            CssHelper.injectCss(identifier, properties);
+          },
       );
     }
   }
@@ -64,12 +68,12 @@ export class Editor {
   private injectScrollbarTheme(): void {
     if (this.theme.scrollbarTheme) {
       Object.entries(this.theme.scrollbarTheme).forEach(
-        ([identifier, properties]: [string, PropertiesHyphen]) => {
-          CssHelper.injectCss(
-            '#' + this.getEditorId() + '::' + identifier,
-            properties
-          );
-        }
+          ([identifier, properties]: [string, PropertiesHyphen]) => {
+            CssHelper.injectCss(
+                '#' + this.getEditorId() + '::' + identifier,
+                properties,
+            );
+          },
       );
     }
   }
@@ -84,7 +88,8 @@ export class Editor {
 
   /**
    * Create the container
-   * @param {string} futureContainerId Id of the html element to convert to container for the editor
+   * @param {string} futureContainerId Id of the html element
+   * to convert to container for the editor
    */
   private createContainer(futureContainerId: string): void {
     const futureContainer = document.getElementById(futureContainerId);
@@ -95,7 +100,7 @@ export class Editor {
     const futureContainerParent = futureContainer.parentElement;
     if (!futureContainerParent) {
       throw new Error(
-        'Cannot find parent of element with id ' + futureContainerId
+          'Cannot find parent of element with id ' + futureContainerId,
       );
     }
 
@@ -122,10 +127,14 @@ export class Editor {
     // Add settings button
     const settingsSvg = DOMHelper.htmlElementFromString(`
         <div style='display: flex; justify-content: flex-end;'>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6" />
           </svg>
-          <svg display='none' width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg display='none' width="24" height="24" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </div>`);
@@ -145,8 +154,8 @@ export class Editor {
     settingsContainer.style.display = 'none';
     settingsContainer.style.flexDirection = 'column';
     this.formatter
-      .getSettings()
-      .forEach((element) => settingsContainer.appendChild(element));
+        .getSettings()
+        .forEach((element) => settingsContainer.appendChild(element));
   }
 
   /**
@@ -160,7 +169,8 @@ export class Editor {
 
   /**
    * Create the editor content container as an editable div
-   * @param {string} futureContainerId Id of html element to convert to container for the editor
+   * @param {string} futureContainerId Id of html element
+   * to convert to container for the editor
    */
   private initializeContainer(futureContainerId: string): void {
     this.createContainer(futureContainerId);
@@ -213,23 +223,23 @@ export class Editor {
    */
   private injectEditorCss(): void {
     CssHelper.injectCss(
-      this.getEditorIdentifier(),
-      this.getEditorBaseCssProperties()
+        this.getEditorIdentifier(),
+        this.getEditorBaseCssProperties(),
     );
   }
 
   /**
-   * Inject menu Css class into the HTML
+   * Inject menu CSS class into the HTML
    */
   private injectMenuCss(): void {
     CssHelper.injectCss(
-      this.getMenuIdentifier(),
-      this.getMenuBaseCssProperties()
+        this.getMenuIdentifier(),
+        this.getMenuBaseCssProperties(),
     );
   }
 
   /**
-   * Inject container Css class into the HTML
+   * Inject container CSS class into the HTML
    */
   private injectContainerTheme(): void {
     const containerCss = this.getContainerCssProperties();
@@ -237,7 +247,8 @@ export class Editor {
   }
 
   /**
-   * @return {PropertiesHyphen} The combined hardcoded container Css with the container Css provided in the Theme
+   * @return {PropertiesHyphen} The combined hardcoded container CSS
+   * with the container css provided in the Theme
    */
   private getContainerCssProperties(): PropertiesHyphen {
     if (this.theme.editorTheme) {
@@ -250,16 +261,16 @@ export class Editor {
   }
 
   /**
-   * Hardcoded Css for the Container
+   * Hardcoded CSS for the Container
    * @return {PropertiesHyphen}
    */
   private getContainerBaseCssProperties(): PropertiesHyphen {
     return {
-      cursor: 'default',
-      display: 'flex',
+      'cursor': 'default',
+      'display': 'flex',
       'flex-direction': 'row',
-      resize: 'both',
-      overflow: 'auto',
+      'resize': 'both',
+      'overflow': 'auto',
     };
   }
 
@@ -270,9 +281,9 @@ export class Editor {
   private getMenuBaseCssProperties(): PropertiesHyphen {
     return {
       'border-right': '1px solid rgb(83, 79, 86)',
-      margin: '20px 0px 20px 0px',
-      padding: '15px 20px 15px 20px',
-      display: 'flex',
+      'margin': '20px 0px 20px 0px',
+      'padding': '15px 20px 15px 20px',
+      'display': 'flex',
       'flex-direction': 'column',
     };
   }
@@ -283,12 +294,12 @@ export class Editor {
    */
   private getEditorBaseCssProperties(): PropertiesHyphen {
     return {
-      flex: '1',
-      outline: 'none',
-      overflow: 'auto',
+      'flex': '1',
+      'outline': 'none',
+      'overflow': 'auto',
       'scrollbar-color': 'red',
-      padding: '20px 30px 20px 30px',
-      margin: '10px 10px 10px 10px',
+      'padding': '20px 30px 20px 30px',
+      'margin': '10px 10px 10px 10px',
     };
   }
 

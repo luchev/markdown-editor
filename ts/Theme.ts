@@ -1,6 +1,6 @@
-import { ScrollbarTheme } from "./ScrollbarTheme";
-import { EditorTheme } from "./EditorTheme";
-import { CssRules } from "./CssRules";
+import {ScrollbarTheme} from './ScrollbarTheme';
+import {EditorTheme} from './EditorTheme';
+import {CssRules} from './CssRules';
 
 /**
  * A collection of theme objects

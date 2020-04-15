@@ -1,16 +1,16 @@
-import { MdCssRules } from './MdCssRules';
-import { ScrollbarTheme } from './ScrollbarTheme';
-import { Theme } from './Theme';
-import { Editor } from './Editor';
-import { EditorTheme } from './EditorTheme';
-import { MdFormatter } from './MdFormatter';
+import {MdCssRules} from './MdCssRules';
+import {ScrollbarTheme} from './ScrollbarTheme';
+import {Theme} from './Theme';
+import {Editor} from './Editor';
+import {EditorTheme} from './EditorTheme';
+import {MdFormatter} from './MdFormatter';
 
 /**
  * Create Markdown Theme
  */
 const darkMDFormatterTheme: MdCssRules = {
   '.md-header-1': {
-    margin: '24px 0 16px 0',
+    'margin': '24px 0 16px 0',
     'font-weight': 'bold',
     'line-height': '1.25',
     'font-size': '2em',
@@ -18,7 +18,7 @@ const darkMDFormatterTheme: MdCssRules = {
     'border-bottom': '1px solid #eaecef',
   },
   '.md-header-2': {
-    margin: '24px 0 16px 0',
+    'margin': '24px 0 16px 0',
     'font-weight': 'bold',
     'line-height': '1.25',
     'padding-bottom': '.3em',
@@ -26,25 +26,25 @@ const darkMDFormatterTheme: MdCssRules = {
     'font-size': '1.5em',
   },
   '.md-header-3': {
-    margin: '24px 0 16px 0',
+    'margin': '24px 0 16px 0',
     'font-weight': 'bold',
     'line-height': '1.25',
     'font-size': '1.25em',
   },
   '.md-header-4': {
-    margin: '24px 0 16px 0',
+    'margin': '24px 0 16px 0',
     'font-weight': 'bold',
     'line-height': '1.25',
     'font-size': '1em',
   },
   '.md-header-5': {
-    margin: '24px 0 16px 0',
+    'margin': '24px 0 16px 0',
     'font-weight': 'bold',
     'line-height': '1.25',
     'font-size': '.875em',
   },
   '.md-header-6': {
-    margin: '24px 0 16px 0',
+    'margin': '24px 0 16px 0',
     'font-weight': 'bold',
     'line-height': '1.25',
     'font-size': '.85em',
@@ -66,14 +66,14 @@ const darkMDFormatterTheme: MdCssRules = {
   },
   '.md-link': {
     'text-decoration': 'none',
-    color: 'rgb(77, 172, 253)',
+    'color': 'rgb(77, 172, 253)',
   },
   '.md-image': {
     'max-width': '100%',
   },
   '.md-inline-code': {
     'font-family': 'monospace',
-    padding: '.2em .4em',
+    'padding': '.2em .4em',
     'font-size': '85%',
     'border-radius': '3px',
     'background-color': 'rgba(220, 224, 228, 0.1) !important',
@@ -82,8 +82,8 @@ const darkMDFormatterTheme: MdCssRules = {
     'font-family': 'monospace',
     'border-radius': '3px',
     'word-wrap': 'normal',
-    padding: '16px',
-    background: 'rgba(220, 224, 228, 0.1) !important',
+    'padding': '16px',
+    'background': 'rgba(220, 224, 228, 0.1) !important',
   },
   '.md-table-header': {
     'line-height': '1.5',
@@ -91,30 +91,30 @@ const darkMDFormatterTheme: MdCssRules = {
     'border-collapse': 'collapse',
     'text-align': 'center',
     'font-weight': 'bold',
-    padding: '6px 13px',
-    border: '1px solid #dfe2e5',
+    'padding': '6px 13px',
+    'border': '1px solid #dfe2e5',
   },
   '.md-table-cell': {
     'line-height': '1.5',
     'border-spacing': '0',
     'border-collapse': 'collapse',
     'text-align': 'right',
-    padding: '6px 13px',
-    border: '1px solid #dfe2e5',
+    'padding': '6px 13px',
+    'border': '1px solid #dfe2e5',
   },
   '.md-quote': {
     'border-spacing': '0',
     'border-collapse': 'collapse',
-    padding: '6px 13px',
+    'padding': '6px 13px',
     'border-left': '.25em solid rgb(53, 59, 66)',
   },
   '.md-horizontal-line': {
     'line-height': '1.5',
-    overflow: 'hidden',
-    height: '.25em',
-    padding: '0',
-    margin: '24px 0',
-    background: 'white',
+    'overflow': 'hidden',
+    'height': '.25em',
+    'padding': '0',
+    'margin': '24px 0',
+    'background': 'white',
   },
 };
 
@@ -126,11 +126,11 @@ const darkScrollbar: ScrollbarTheme = {
     width: '10px',
   },
   '-webkit-scrollbar-track': {
-    background: 'rgb(53, 59, 66)',
+    'background': 'rgb(53, 59, 66)',
     'border-radius': '4px',
   },
   '-webkit-scrollbar-thumb': {
-    background: 'rgb(83, 79, 86)',
+    'background': 'rgb(83, 79, 86)',
     'border-radius': '4px',
   },
   '-webkit-scrollbar-thumb:hover': {
@@ -139,9 +139,9 @@ const darkScrollbar: ScrollbarTheme = {
 };
 
 const darkEditorTheme: EditorTheme = {
-  background: '#202225',
-  color: '#dcddde',
-  height: '50%',
+  'background': '#202225',
+  'color': '#dcddde',
+  'height': '50%',
   'box-shadow':
     '0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19)',
 };
