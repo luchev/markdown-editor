@@ -14,7 +14,7 @@ export class Editor {
     }
     injectAdditionalCssRules() {
         if (this.theme.additionalCssRules) {
-            Object.entries(this.theme.additionalCssRules).forEach(([identifier, properties]) => {
+            Object.entries(this.theme.additionalCssRules.rules).forEach(([identifier, properties]) => {
                 CssHelper.injectCss(identifier, properties);
             });
         }
@@ -22,7 +22,8 @@ export class Editor {
     injectScrollbarTheme() {
         if (this.theme.scrollbarTheme) {
             Object.entries(this.theme.scrollbarTheme).forEach(([identifier, properties]) => {
-                CssHelper.injectCss('#' + this.getEditorId() + '::' + identifier, properties);
+                const cssIdentifier = '#' + this.getEditorId() + '::' + identifier;
+                CssHelper.injectCss(cssIdentifier, properties);
             });
         }
     }

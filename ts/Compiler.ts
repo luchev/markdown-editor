@@ -1,3 +1,5 @@
+import {DOMHelper} from './DOMHelper';
+
 type ReferenceData = {link: string; title: string};
 type ReferenceDictionary = {[reference: string]: ReferenceData};
 type HtmlTag = {openTag: string; closeTag: string};
@@ -11,45 +13,36 @@ export class Compiler {
    * @param {string} text is a markdown document
    * @return {string} compiled html
    */
-  compileText(text: string): string {
+  compileText(text: string): HTMLElement[] {
     const paragraphs = this.splitStringToParagraphs(text);
-    // const compiledParagraphs = paragraphs.map((paragraph) => this.compileParagraph(paragraph));
-    let compiledParagraphs: string[] = [];
+    const compiledElements: HTMLElement[] = [];
     for (const paragraph of paragraphs) {
-      const compiled = this.compileParagraphPrefix(paragraph);
-      if (typeof compiled === 'string') {
-        compiledParagraphs.push(compiled);
+      const element = this.compileParagraph(paragraph);
+      if (typeof element === 'string') {
+        const reference = element;
+        this.fixReferences(compiledElements, reference);
       } else {
-        this.references[compiled['reference']] = {link: compiled.link, title: compiled.title};
+        compiledElements.push(element);
       }
     }
-
-    compiledParagraphs = compiledParagraphs.map((paragraph) => {
-      const inlineTokens = this.tokenizeParagraphForInfixCompilation(paragraph);
-      let compiled = this.compileInfixTokens(inlineTokens);
-      compiled = this.compileImage(compiled);
-      compiled = this.compileLink(compiled);
-      return compiled;
-    });
-
-    return compiledParagraphs.join('');
+    return compiledElements;
   }
 
   /** Compile one markdown block or line to html
    * @param {string} paragraph is one markdown block/line
    * @return {string} compiled html
    */
-  compileParagraph(paragraph: string): string {
-    let compiled = this.compileParagraphPrefix(paragraph);
+  compileParagraph(paragraph: string): HTMLElement | string {
+    let compiled = this.compilePrefix(paragraph);
     if (typeof compiled !== 'string') {
       this.references[compiled['reference']] = {link: compiled.link, title: compiled.title};
-      return '';
+      return compiled['reference'];
     } else {
       const inlineTokens = this.tokenizeParagraphForInfixCompilation(compiled);
       compiled = this.compileInfixTokens(inlineTokens);
       compiled = this.compileImage(compiled);
       compiled = this.compileLink(compiled);
-      return compiled;
+      return DOMHelper.htmlElementFromString(compiled);
     }
   }
 
@@ -208,7 +201,7 @@ export class Compiler {
    * @param {string} paragraph
    * @return {string} compiled html with prefix formatters
    */
-  private compileParagraphPrefix(paragraph: string): string | {reference: string; link: string; title: string} {
+  private compilePrefix(paragraph: string): string | {reference: string; link: string; title: string} {
     for (const prefix of this.prefixFormatters) {
       if (prefix.regex.test(paragraph)) {
         return prefix.openTag + paragraph + prefix.closeTag;
@@ -232,6 +225,24 @@ export class Compiler {
     }
 
     return '<p>' + paragraph + '</p>';
+  }
+
+  /**
+   * @param {HTMLElement[]} elements
+   * @param {string} reference
+   */
+  fixReferences(elements: HTMLElement[], reference: string): void {
+    elements.map((element) => element.querySelectorAll(`[data-reference="${reference}"]`))
+        .map((nodes) => {
+          for (const node of nodes) {
+            node.setAttribute('title', this.references[reference].title);
+            if (node.tagName === 'A') {
+              node.setAttribute('href', this.references[reference].link);
+            } else if (node.tagName === 'IMG') {
+              node.setAttribute('src', this.references[reference].link);
+            }
+          }
+        });
   }
 
   /** Split a string to markdown paragraphs

@@ -320,9 +320,22 @@ export class MdFormatter extends Formatter {
                 div.className = className;
             }
         }
+        const asterisks = new RegExp('\\*+');
+        let match;
+        while ((match = asterisks.exec(div.innerText))) {
+            console.log(match);
+        }
     }
     clearDivFormatting(div) {
         div.className = '';
+        for (const child of div.children) {
+            if (child instanceof HTMLElement && child.tagName === 'SPAN') {
+                const span = child;
+                const spanText = span.innerText;
+                span.replaceWith(spanText);
+            }
+        }
+        div.normalize();
     }
 }
 MdFormatter.lineStartRules = [];

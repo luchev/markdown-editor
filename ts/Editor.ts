@@ -39,13 +39,13 @@ export class Editor {
    */
   constructor(
       containerId: string,
-    private formatter: Formatter,
-    private theme: Theme,
+      private formatter: Formatter,
+      private theme: Theme,
   ) {
     this.idPrefix = containerId;
     this.initializeContainer(this.idPrefix);
     this.applyTheme();
-    this.formatter.init(this.editor);
+    this.formatter.init(this.editor); // TODO uncomment
   }
 
   /**
@@ -54,8 +54,8 @@ export class Editor {
    */
   private injectAdditionalCssRules(): void {
     if (this.theme.additionalCssRules) {
-      Object.entries(this.theme.additionalCssRules).forEach(
-          ([identifier, properties]: [string, PropertiesHyphen]) => {
+      Object.entries(this.theme.additionalCssRules.rules).forEach(
+          ([identifier, properties]) => {
             CssHelper.injectCss(identifier, properties);
           },
       );
@@ -68,11 +68,9 @@ export class Editor {
   private injectScrollbarTheme(): void {
     if (this.theme.scrollbarTheme) {
       Object.entries(this.theme.scrollbarTheme).forEach(
-          ([identifier, properties]: [string, PropertiesHyphen]) => {
-            CssHelper.injectCss(
-                '#' + this.getEditorId() + '::' + identifier,
-                properties,
-            );
+          ([identifier, properties]) => {
+            const cssIdentifier = '#' + this.getEditorId() + '::' + identifier;
+            CssHelper.injectCss(cssIdentifier, properties);
           },
       );
     }

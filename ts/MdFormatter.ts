@@ -414,7 +414,6 @@ export class MdFormatter extends Formatter {
     if (mutation.type === 'childList') {
       this.handleChildListMutation(mutation);
     }
-
     if (mutation.type === 'characterData') {
       this.handleCharacterDataMutation(mutation);
     }
@@ -523,6 +522,23 @@ export class MdFormatter extends Formatter {
         div.className = className;
       }
     }
+
+    // TODO format inline style
+
+    const asterisks = new RegExp('\\*+');
+    let match: RegExpExecArray | null;
+    while ((match = asterisks.exec(div.innerText))) {
+      console.log(match);
+    }
+
+    // const matches = div.innerText.match(asterisks);
+    // console.log(matches);
+    // if (matches) {
+    //   matches.forEach((match) => {
+    //     const span = '<span class="md-bold">' + match + '</span>';
+    //     div.innerHTML = div.innerHTML.replace(match, span);
+    //   });
+    // }
   }
 
   /**
@@ -531,5 +547,13 @@ export class MdFormatter extends Formatter {
    */
   private clearDivFormatting(div: HTMLElement): void {
     div.className = '';
+    for (const child of div.children) {
+      if (child instanceof HTMLElement && child.tagName === 'SPAN') {
+        const span = child as HTMLElement;
+        const spanText = span.innerText;
+        span.replaceWith(spanText);
+      }
+    }
+    div.normalize();
   }
 }
