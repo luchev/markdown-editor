@@ -1,53 +1,39 @@
 import {Formatter} from './Formatter';
 import {DOMHelper} from './DOMHelper';
+import {Compiler} from './Compiler';
+import {ReferenceDictionary} from './Compiler';
+
+interface Settings {
+  dynamicRender: boolean;
+  showSyntax: boolean;
+}
+
+interface DocumentData {
+  currentParagraph: HTMLElement | null;
+  references: ReferenceDictionary;
+}
 
 /**
  * Markdown formatter which is based on the generic Formatter class
  * This formatter uses common Markdown syntax to
  */
 export class MdFormatter extends Formatter {
-  /**
-   * List of rules which are applied to markdown elements which
-   * start with a specific string
-   * e.g headers "# " or "### "
-   *
-   * An array of [<class-name>, <regex-expression>] tuples.
-   * <class-name> is the css class name added to the
-   * element if it matches <regex-expression>
-   */
-  private static lineStartRules: [string, RegExp][] = [];
-
-  /**
-   * Inline MD rules are italic, bold, strikethrough
-   * List of rules which are applied to inline markdown elements
-   * e.g **this text will be bold**
-   *
-   * An array of [<class-name>, <inline-identifier>] tuples.
-   * <class-name> is the css class name added to the
-   * element if it is surrounded by <inline-identifier>
-   */
-  private static inlineRules: [string, string][] = [];
-
-  /**
-   * Hook to the editor div
-   */
+  // Hook to the editor html element
   private editor: HTMLElement = document.createElement('invalid');
 
-  /**
-   * Flag indicating whether formatting should be applied when text is inputted
-   */
-  private dynamicRender = true;
+  // Settings for the formatter/compiler
+  private settings: Settings = {
+    dynamicRender: true,
+    showSyntax: true,
+  }
 
-  /**
-   * Flag indicating whether when leaving a paragraph
-   * the MD tokens should be hidden
-   */
-  private hideSyntax = true;
+  // Data specific to the currently open document
+  private documentData: DocumentData = {
+    currentParagraph: null,
+    references: {},
+  }
 
-  /**
-   * The current div which the caret is in
-   */
-  private caretDiv: HTMLElement | null = null;
+  private compiler: Compiler = new Compiler();
 
   /**
    * Initialize the mutation observer, which monitors changes happening
@@ -56,10 +42,31 @@ export class MdFormatter extends Formatter {
    */
   init(editor: HTMLElement): void {
     this.editor = editor;
-    this.initRegex();
     this.initMutationListeners();
     this.initKeyboardEventListeners();
     this.initMouseEventListeners();
+  }
+
+  /** Set the content of the current document
+   * @param {string} content
+   */
+  setContent(content: string): void {
+    const {html, references} = this.compiler.compileText(content, {});
+    this.editor.innerHTML = '';
+    for (const div of html) {
+      this.editor.appendChild(div);
+    }
+
+    this.documentData.references = references;
+  }
+
+  /** Get the content of the current document as text
+   * @return {string}
+   */
+  getContent(): string {
+    // TODO
+    const content = '';
+    return content;
   }
 
   /**
@@ -71,7 +78,7 @@ export class MdFormatter extends Formatter {
       childList: true, // addition/removal of children in the dom tree
       subtree: true, // observe also grandchildren
       characterData: true, // observe keyboard input
-      // attributes: true, // observe attribute change?
+      // attributes: true, // observe attribute change (maybe?)
     };
 
     const observer = new MutationObserver((mutations) =>
@@ -81,41 +88,24 @@ export class MdFormatter extends Formatter {
     observer.observe(this.editor, observerConfig);
   }
 
-  /**
-   * Initialize keyboard event listeners
-   */
+  /** Initialize keyboard event listeners */
   private initKeyboardEventListeners(): void {
-    this.editor.addEventListener('keydown', () => this.handleKeyDown());
     this.editor.addEventListener('keyup', () => this.handleKeyUp());
   }
 
-  /**
-   * Initialize keyboard event listeners
-   */
+  /** Initialize keyboard event listeners */
   private initMouseEventListeners(): void {
     this.editor.addEventListener('click', () => this.handleClick());
   }
 
-  /**
-   * Handle hotkeys
-   * @param {KeyboardEvent} event
-   */
-  private handleKeyDown(): void {
-    // TODO add argument event: KeyboardEvent
-    this.caretMoved();
-  }
-
-  /**
-   * Handle hotkeys
+  /** Handle hotkeys
    * @param {KeyboardEvent} event
    */
   private handleKeyUp(): void {
-    // TODO add argument event: KeyboardEvent
     this.caretMoved();
   }
 
-  /**
-   * Find the div in which the caret is
+  /** Find the div in which the caret is
    * @return {HTMLElement | null} the div in which
    * the carret currently is or null if it's not in any
    */
@@ -136,89 +126,45 @@ export class MdFormatter extends Formatter {
     }
   }
 
-  /**
-   * Handle caret entering a new div
-   */
+  /** Handle caret entering a new div */
   private caretMoved(): void {
-    const caretDiv = this.getCaretDiv();
-    if (this.caretDiv !== caretDiv) {
-      if (this.caretDiv) {
-        this.caretDiv.setAttribute('data-active', 'false');
-        if (this.hideSyntax) {
-          this.hideMdTokens(this.caretDiv);
+    const newCurrentParagraph = this.getCaretDiv();
+    if (this.documentData.currentParagraph !== newCurrentParagraph) {
+      if (this.documentData.currentParagraph) {
+        this.documentData.currentParagraph.setAttribute('data-active', 'false');
+        this.documentData.currentParagraph.setAttribute('data-text', this.documentData.currentParagraph.innerText);
+        const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
+        if (compiled instanceof HTMLElement) {
+          this.documentData.currentParagraph.innerHTML = '';
+          this.documentData.currentParagraph.appendChild(compiled);
+        } else {
+          const reference = compiled;
+          console.log(reference);
+          this.documentData.references[reference.reference] = reference.data;
+          this.compiler.fixReferences([this.editor], reference);
         }
       }
 
-      this.caretDiv = caretDiv;
+      this.documentData.currentParagraph = newCurrentParagraph;
 
-      if (this.caretDiv) {
-        this.caretDiv.setAttribute('data-active', 'true');
-        if (this.hideSyntax) {
-          this.showMdTokens(this.caretDiv);
+      if (this.documentData.currentParagraph) {
+        this.documentData.currentParagraph.setAttribute('data-active', 'true');
+        const text = this.documentData.currentParagraph.getAttribute('data-text');
+        if (text) {
+          this.documentData.currentParagraph.innerText = text;
         }
       }
     }
   }
 
-  /**
-   * @param {string} text text to apply regex to
-   * @param {RegExp} regex
-   * @return {string} length of first regex match
-   */
-  private getFirstRegexMatch(text: string, regex: RegExp): string {
-    const matches = text.match(regex);
-    if (matches && matches.length === 1) {
-      return matches[0];
-    }
-    return '';
-  }
-
-  /**
-   * @param {HTMLElement} div elemet in which to show MD tokens
-   */
-  private showMdTokens(div: HTMLElement): void {
-    for (const child of div.children) {
-      if (child instanceof HTMLElement && child.tagName === 'SPAN') {
-        const span = child as HTMLElement;
-        if (span.style.display === 'none') {
-          const spanText = span.innerText;
-          span.replaceWith(spanText);
-        }
-      }
-    }
-    div.normalize();
-  }
-
-  /**
-   * @param {HTMLElement} div elemet in which to hide MD tokens
-   */
-  private hideMdTokens(div: HTMLElement): void {
-    // Hide start of row MD tokens
-    for (const [, regex] of MdFormatter.lineStartRules) {
-      if (regex.test(div.innerText)) {
-        const lineStart = this.getFirstRegexMatch(div.innerText, regex);
-        div.innerText = div.innerText.replace(lineStart, '');
-
-        const span = document.createElement('span');
-        span.style.display = 'none';
-        span.innerText = lineStart;
-
-        div.prepend(span);
-        break;
-      }
-    }
-  }
-
-  /**
-   * Handle mouse click in the editor
+  /** Handle mouse click in the editor
    * @param {MouseEvent} event
    */
   private handleClick(): void {
     this.caretMoved();
   }
 
-  /**
-   * Get list of property elements to put in the settings menu in the editor
+  /** Get list of property elements to put in the settings menu in the editor
    * @return {HTMLElement[]} List of settings as div elements
    */
   getSettings(): HTMLElement[] {
@@ -293,8 +239,7 @@ export class MdFormatter extends Formatter {
     return settingsElements;
   }
 
-  /**
-   * Method to handle the click event on the setting Toggle Dynamic Renderer
+  /** Method to handle the click event on the setting Toggle Dynamic Renderer
    * @param {MouseEvent} event Click event to toggle Dynamic Renderer
    */
   private toggleDynamicRender(event: MouseEvent): void {
@@ -309,16 +254,15 @@ export class MdFormatter extends Formatter {
       }
     }
 
-    this.dynamicRender = !this.dynamicRender;
-    if (this.dynamicRender) {
+    this.settings.dynamicRender = !this.settings.dynamicRender;
+    if (this.settings.dynamicRender) {
       this.enableRendering();
     } else {
       this.disableRendering();
     }
   }
 
-  /**
-   * Method to handle the click event on the setting Toggle Dynamic Renderer
+  /** Method to handle the click event on the setting Toggle Dynamic Renderer
    * @param {MouseEvent} event Click event to toggle Dynamic Renderer
    */
   private toggleHideSyntax(event: MouseEvent): void {
@@ -333,227 +277,86 @@ export class MdFormatter extends Formatter {
       }
     }
 
-    this.hideSyntax = !this.hideSyntax;
-    if (this.hideSyntax) {
+    this.settings.showSyntax = !this.settings.showSyntax;
+    if (this.settings.showSyntax) {
       this.enableHideSyntax();
     } else {
       this.disableHideSyntax();
     }
   }
 
-  /**
-   * Enable hiding syntax, aka MD identifiers like "# " and "** <some-text> **"
+  /** Enable hiding syntax, aka MD identifiers like "# " and "** <some-text> **"
    */
   private enableHideSyntax(): void {
-    for (const element of this.editor.children) {
-      if (element instanceof HTMLElement) {
-        this.hideMdTokens(element as HTMLElement);
-      }
-    }
+    this.settings.showSyntax = true;
   }
 
-  /**
-   * Disable hiding syntax, aka MD identifiers like "# " and "** <some-text> **"
+  /** Disable hiding syntax, aka MD identifiers like "# " and "** <some-text> **"
    */
   private disableHideSyntax(): void {
-    for (const element of this.editor.children) {
-      if (element instanceof HTMLElement) {
-        this.showMdTokens(element as HTMLElement);
-      }
-    }
+    this.settings.showSyntax = false;
   }
 
-  /**
-   * Initialize regexes for matching markdown formatting strings
-   * at the start of the line
-   * e.g headers # and ###
-   */
-  private initRegex(): void {
-    if (MdFormatter.lineStartRules.length === 0) {
-      MdFormatter.lineStartRules.push(['md-header-1', RegExp('^#{1}\\s')]);
-      MdFormatter.lineStartRules.push(['md-header-2', RegExp('^#{2}\\s')]);
-      MdFormatter.lineStartRules.push(['md-header-3', RegExp('^#{3}\\s')]);
-      MdFormatter.lineStartRules.push(['md-header-4', RegExp('^#{4}\\s')]);
-      MdFormatter.lineStartRules.push(['md-header-5', RegExp('^#{5}\\s')]);
-      MdFormatter.lineStartRules.push(['md-header-6', RegExp('^#{6}\\s')]);
-      MdFormatter.lineStartRules.push(['md-quote', RegExp('^>\\s')]);
-    }
-  }
-
-  /**
-   *
-   */
-  private initInlineRules(): void {
-    if (MdFormatter.inlineRules.length === 0) {
-      MdFormatter.inlineRules.push(['md-bold', '**']);
-      MdFormatter.inlineRules.push(['md-bold', '__']);
-      MdFormatter.inlineRules.push(['md-italics', '*']);
-      MdFormatter.inlineRules.push(['md-italics', '_']);
-      MdFormatter.inlineRules.push(['md-strikethrough', '--']);
-    }
-  }
-
-  /**
-   * Handle array of Mutations
+  /** Handle array of Mutations
    * @param {MutationRecord[]} mutations array of mutations
    */
   private handleMutations(mutations: MutationRecord[]): void {
-    if (this.dynamicRender) {
-      for (const mutation of mutations) {
-        this.handleMutation(mutation);
+    mutations.map((mutation) => {
+      if (mutation.type === 'childList') {
+        this.handleChildListMutation(mutation);
+      } else if (mutation.type === 'characterData') {
+        this.handleCharacterDataMutation(mutation);
       }
-    }
+    });
   }
 
-  /**
-   * Handle a single mutation by calling the right method
-   * depending on the mutation type
-   * @param {MutationRecord} mutation Mutation to parse
-   */
-  private handleMutation(mutation: MutationRecord): void {
-    if (mutation.type === 'childList') {
-      this.handleChildListMutation(mutation);
-    }
-    if (mutation.type === 'characterData') {
-      this.handleCharacterDataMutation(mutation);
-    }
-  }
-
-  /**
-   * Handle a single Mutation of type childList
+  /** Handle a single Mutation of type childList
    * @param {MutationRecord} mutation The mutation that happened
    */
   private handleChildListMutation(mutation: MutationRecord): void {
-    if (mutation.addedNodes.length > 0) {
-      const addedNode: Node = mutation.addedNodes[0];
-
-      // Add first div if the editor is empty and this is the first addedd #text
-      // The first text written will not be in a separate div,
-      // so create a div for it and put the text inside
-      if (
-        addedNode.nodeName === '#text' &&
-        addedNode.parentElement === this.editor
-      ) {
-        const newDiv = document.createElement('div');
-        this.editor.insertBefore(newDiv, addedNode.nextSibling);
-        newDiv.appendChild(addedNode);
-
-        // Move cursor to end of line
-        const range: Range = document.createRange();
-        const sel: Selection | null = window.getSelection();
-        range.setStart(this.editor.childNodes[0], newDiv.innerText.length);
-        range.collapse(true);
-        if (sel) {
-          sel.removeAllRanges();
-          sel.addRange(range);
-        }
-      }
-
-      // If added node is a div, clear all classes
-      if (addedNode.nodeName === 'DIV' && mutation.target !== this.editor) {
-        if (addedNode.nodeType === Node.ELEMENT_NODE) {
-          const elementFromNode: HTMLElement = addedNode as HTMLElement;
-          while (elementFromNode.hasAttributes()) {
-            elementFromNode.removeAttribute(elementFromNode.attributes[0].name);
-          }
-        }
-      }
+    if (mutation.addedNodes.length === 0) {
+      return;
     }
 
-    // Check if the element is empty and clear its classes
+    const addedNode: Node = mutation.addedNodes[0];
+    // Add first div if the editor is empty and this is the first added #text
+    // The first text written will not be in a separate div,
+    // so create a div for it and put the text inside
     if (
-      mutation.target.nodeType === Node.ELEMENT_NODE &&
-      mutation.target !== this.editor
+      addedNode.nodeName === '#text' &&
+      addedNode.parentElement === this.editor
     ) {
-      const elementFromNode = mutation.target as HTMLElement;
+      const newDiv = document.createElement('div');
+      this.editor.insertBefore(newDiv, addedNode.nextSibling);
+      newDiv.appendChild(addedNode);
 
-      if (elementFromNode) {
-        const spacesRegex = RegExp('^\\s*$');
-        if (spacesRegex.test(elementFromNode.innerText)) {
-          this.clearDivFormatting(elementFromNode);
-        }
+      // Move cursor to end of line
+      const range: Range = document.createRange();
+      const sel: Selection | null = window.getSelection();
+      range.setStart(this.editor.childNodes[0], newDiv.innerText.length);
+      range.collapse(true);
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
       }
     }
   }
 
-  /**
-   * Handle a single Mutation of type characterData
+  /** Handle a single Mutation of type characterData
    * @param {MutationRecord} mutation The mutation that happened
    */
   private handleCharacterDataMutation(mutation: MutationRecord): void {
-    const div = mutation.target.parentElement;
-    if (div && this.dynamicRender) {
-      this.clearDivFormatting(div);
-      this.applyDivFormatting(div);
-    }
+    const element = mutation.target.parentElement;
+    // TODO
   }
 
-  /**
-   * Disable and Remove all formatting
-   */
+  /** Disable and Remove all formatting */
   private disableRendering(): void {
-    for (const child of this.editor.children) {
-      if (child instanceof HTMLElement) {
-        const div = child as HTMLElement;
-        this.clearDivFormatting(div);
-      }
-    }
+    this.settings.dynamicRender = false;
   }
 
-  /**
-   * Enable and apply all formatting
-   */
+  /** Enable and apply all formatting */
   private enableRendering(): void {
-    for (const child of this.editor.children) {
-      if (child instanceof HTMLElement) {
-        const div = child as HTMLElement;
-        this.applyDivFormatting(div);
-      }
-    }
-  }
-
-  /**
-   * Add specific MD formatting to a single div(paragraph)
-   * @param {HTMLElement} div the element to apply specific formatting
-   */
-  private applyDivFormatting(div: HTMLElement): void {
-    for (const [className, regex] of MdFormatter.lineStartRules) {
-      if (regex.test(div.innerText)) {
-        div.className = className;
-      }
-    }
-
-    // TODO format inline style
-
-    const asterisks = new RegExp('\\*+');
-    let match: RegExpExecArray | null;
-    while ((match = asterisks.exec(div.innerText))) {
-      console.log(match);
-    }
-
-    // const matches = div.innerText.match(asterisks);
-    // console.log(matches);
-    // if (matches) {
-    //   matches.forEach((match) => {
-    //     const span = '<span class="md-bold">' + match + '</span>';
-    //     div.innerHTML = div.innerHTML.replace(match, span);
-    //   });
-    // }
-  }
-
-  /**
-   * Clear MD formatting from a single element(paragraph)
-   * @param {HTMLElement} div the element to apply specific formatting
-   */
-  private clearDivFormatting(div: HTMLElement): void {
-    div.className = '';
-    for (const child of div.children) {
-      if (child instanceof HTMLElement && child.tagName === 'SPAN') {
-        const span = child as HTMLElement;
-        const spanText = span.innerText;
-        span.replaceWith(spanText);
-      }
-    }
-    div.normalize();
+    this.settings.dynamicRender = true;
   }
 }

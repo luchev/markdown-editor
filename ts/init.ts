@@ -154,4 +154,4 @@ const customTheme: Theme = {
   editorTheme: darkEditorTheme,
 };
 
-const editor = new Editor('editor', new MdFormatter(), customTheme);
+// const editor = new Editor('editor', new MdFormatter(), customTheme);

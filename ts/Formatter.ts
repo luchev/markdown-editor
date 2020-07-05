@@ -13,4 +13,8 @@ export abstract class Formatter {
   abstract init(container: HTMLElement): void;
 
   abstract getSettings(): HTMLElement[];
+
+  abstract getContent(): string;
+
+  abstract setContent(content: string): void;
 }

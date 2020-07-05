@@ -1,8 +1,20 @@
 import {DOMHelper} from './DOMHelper';
 
-type ReferenceData = {link: string; title: string};
-type ReferenceDictionary = {[reference: string]: ReferenceData};
-type HtmlTag = {openTag: string; closeTag: string};
+interface HtmlTag {openTag: string; closeTag: string}
+
+export interface ReferenceData {
+  link: string;
+  title: string;
+}
+
+export interface Reference {
+  reference: string;
+   data: ReferenceData;
+  }
+
+export interface ReferenceDictionary {
+  [reference: string]: ReferenceData;
+}
 
 /** Markdown compiler
  * The compiler holds document-specific data so each document must have
@@ -11,43 +23,50 @@ type HtmlTag = {openTag: string; closeTag: string};
 export class Compiler {
   /** Compile markdown document to html
    * @param {string} text is a markdown document
+   * @param {ReferenceDictionary} references
    * @return {string} compiled html
    */
-  compileText(text: string): HTMLElement[] {
+  compileText(text: string, references: ReferenceDictionary):
+      {html: HTMLElement[]; references: ReferenceDictionary} {
+    const newReferences = references;
     const paragraphs = this.splitStringToParagraphs(text);
     const compiledElements: HTMLElement[] = [];
     for (const paragraph of paragraphs) {
-      const element = this.compileParagraph(paragraph);
-      if (typeof element === 'string') {
-        const reference = element;
-        this.fixReferences(compiledElements, reference);
-      } else {
+      const element = this.compileParagraph(paragraph, newReferences);
+      if (element instanceof HTMLElement) {
         compiledElements.push(element);
+      } else {
+        const reference = element;
+        newReferences[reference.reference] = reference.data;
+        this.fixReferences(compiledElements, reference);
       }
     }
-    return compiledElements;
+    return {
+      html: compiledElements,
+      references: newReferences,
+    };
   }
 
   /** Compile one markdown block or line to html
    * @param {string} paragraph is one markdown block/line
+   * @param {ReferenceDictionary} references
    * @return {string} compiled html
    */
-  compileParagraph(paragraph: string): HTMLElement | string {
+  compileParagraph(paragraph: string, references: ReferenceDictionary): HTMLElement | Reference {
     let compiled = this.compilePrefix(paragraph);
     if (typeof compiled !== 'string') {
-      this.references[compiled['reference']] = {link: compiled.link, title: compiled.title};
-      return compiled['reference'];
+      return compiled;
     } else {
       const inlineTokens = this.tokenizeParagraphForInfixCompilation(compiled);
       compiled = this.compileInfixTokens(inlineTokens);
-      compiled = this.compileImage(compiled);
-      compiled = this.compileLink(compiled);
-      return DOMHelper.htmlElementFromString(compiled);
+      compiled = this.compileImage(compiled, references);
+      compiled = this.compileLink(compiled, references);
+      const div = document.createElement('div');
+      div.appendChild(DOMHelper.htmlElementFromString(compiled));
+      div.setAttribute('data-text', paragraph);
+      return div;
     }
   }
-
-  // Dictionary of document references and their values
-  private references: ReferenceDictionary = {};
 
   // Dictionary of infix formatters and their html tags
   private infixFormatters: {[token: string]: HtmlTag} = {
@@ -72,9 +91,10 @@ export class Compiler {
 
   /** Parse images
    * @param {string} paragraph
+   * @param {ReferenceDictionary} references
    * @return {string} html with compiled image tags
    */
-  private compileImage(paragraph: string): string {
+  private compileImage(paragraph: string, references: ReferenceDictionary): string {
     // Compile standard image tags
     const imageRegex = /!\[(.*?)\]\((.*?) ("(.*?)")\)?/g;
     for (const match of paragraph.matchAll(imageRegex)) {
@@ -92,9 +112,9 @@ export class Compiler {
       const ref = match[3] !== undefined ? match[3] : '';
       let link = '';
       let title = '';
-      if (this.references[ref] !== undefined) {
-        link = this.references[ref].link !== undefined ? this.references[ref].link : '';
-        title = this.references[ref].title !== undefined ? this.references[ref].title : '';
+      if (references[ref] !== undefined) {
+        link = references[ref].link !== undefined ? references[ref].link : '';
+        title = references[ref].title !== undefined ? references[ref].title : '';
       }
       const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" data-reference="${ref}">`;
       paragraph = paragraph.replace(match[0], htmlTag);
@@ -104,9 +124,10 @@ export class Compiler {
 
   /** Parse hyper links
    * @param {string} paragraph
+   * @param {ReferenceDictionary} references
    * @return {string} html with compiled link tags
    */
-  private compileLink(paragraph: string): string {
+  private compileLink(paragraph: string, references: ReferenceDictionary): string {
     const linkRegex = /\[(.*?)\](\((.*?)( "(.*)")?\)|\[(.*)\])?/g;
     for (const match of paragraph.matchAll(linkRegex)) {
       let htmlTag = match[0];
@@ -121,9 +142,9 @@ export class Compiler {
         if (match[2] === undefined) { // Handle references the reference is the name
           ref = name;
         }
-        if (this.references[ref] !== undefined) {
-          link = this.references[ref].link !== undefined ? this.references[ref].link : '';
-          title = this.references[ref].title !== undefined ? this.references[ref].title : '';
+        if (references[ref] !== undefined) {
+          link = references[ref].link !== undefined ? references[ref].link : '';
+          title = references[ref].title !== undefined ? references[ref].title : '';
         }
         htmlTag = `<a href="${link}" title="${title}" data-reference="${ref}">${name}</a>`;
       }
@@ -201,7 +222,7 @@ export class Compiler {
    * @param {string} paragraph
    * @return {string} compiled html with prefix formatters
    */
-  private compilePrefix(paragraph: string): string | {reference: string; link: string; title: string} {
+  private compilePrefix(paragraph: string): string | Reference {
     for (const prefix of this.prefixFormatters) {
       if (prefix.regex.test(paragraph)) {
         return prefix.openTag + paragraph + prefix.closeTag;
@@ -218,8 +239,10 @@ export class Compiler {
       if (anchorParts && anchorParts[1] !== undefined) {
         return {
           reference: anchorParts[1],
-          link: anchorParts[2] !== undefined ? anchorParts[2] : '',
-          title: anchorParts[5] !== undefined ? anchorParts[5] : '',
+          data: {
+            link: anchorParts[2] !== undefined ? anchorParts[2] : '',
+            title: anchorParts[5] !== undefined ? anchorParts[5] : '',
+          },
         };
       }
     }
@@ -229,17 +252,18 @@ export class Compiler {
 
   /**
    * @param {HTMLElement[]} elements
-   * @param {string} reference
+   * @param {Reference} reference
+   * @param {ReferenceDictionary} references
    */
-  fixReferences(elements: HTMLElement[], reference: string): void {
-    elements.map((element) => element.querySelectorAll(`[data-reference="${reference}"]`))
+  public fixReferences(elements: HTMLElement[], reference: Reference): void {
+    elements.map((element) => element.querySelectorAll(`[data-reference="${reference.reference}"]`))
         .map((nodes) => {
           for (const node of nodes) {
-            node.setAttribute('title', this.references[reference].title);
+            node.setAttribute('title', reference.data.title);
             if (node.tagName === 'A') {
-              node.setAttribute('href', this.references[reference].link);
+              node.setAttribute('href', reference.data.link);
             } else if (node.tagName === 'IMG') {
-              node.setAttribute('src', this.references[reference].link);
+              node.setAttribute('src', reference.data.link);
             }
           }
         });

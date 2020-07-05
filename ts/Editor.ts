@@ -9,25 +9,17 @@ import {DOMHelper} from './DOMHelper';
  * container, formatter, settings and themes
  */
 export class Editor {
-  /**
-   * The container for the menu and the editor
-   */
+  // The container for the menu and the editor
   private container: HTMLElement = document.createElement('div');
 
-  /**
-   * The actual editor which holds the text content
-   */
+  // The actual editor which holds the text content
   private editor: HTMLElement = document.createElement('div');
 
-  /**
-   * The menu next to the editor
-   */
+  // The menu next to the editor
   private menu: HTMLElement = document.createElement('div');
 
-  /**
-   * The Id of the original element which is used as a prefix
-   * for the Ids of the container, menu and editor
-   */
+  // The Id of the original element which is used as a prefix
+  // for the Ids of the container, menu and editor
   private idPrefix: string;
 
   /**
@@ -46,6 +38,20 @@ export class Editor {
     this.initializeContainer(this.idPrefix);
     this.applyTheme();
     this.formatter.init(this.editor); // TODO uncomment
+  }
+
+  /** Set the content of the editor
+   * @param {string} content
+   */
+  setContent(content: string): void {
+    this.formatter.setContent(content);
+  }
+
+  /** Get the content of the editor as text
+   * @return {string}
+   */
+  getContent(): string {
+    return this.formatter.getContent();
   }
 
   /**
