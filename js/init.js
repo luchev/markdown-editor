@@ -1,6 +1,4 @@
 import { MdCssRules, MdCss } from './MdCssRules';
-import { Editor } from './Editor';
-import { MdFormatter } from './MdFormatter';
 const darkMDFormatterTheme = new MdCssRules();
 darkMDFormatterTheme.rules[MdCss.header1] = {
     'margin': '24px 0 16px 0',
@@ -136,4 +134,3 @@ const customTheme = {
     additionalCssRules: darkMDFormatterTheme,
     editorTheme: darkEditorTheme,
 };
-const editor = new Editor('editor', new MdFormatter(), customTheme);

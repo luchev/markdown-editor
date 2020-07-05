@@ -8,8 +8,9 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npm run http & npm run tsc & npm run compileJs",
+    "start": "npm run serve & npm run tsc & npm run compileJs",
     "http": "lite-server",
+    "serve": "autoreload-server -d ./ -p 3000 -w \"**/**.{html,css,js}\"",
     "tsc": "tsc -w",
     "compileJs": "./compileJs.sh"
   },
@@ -26,6 +27,7 @@
   },
   "dependencies": {
     "csstype": "^2.6.9",
+    "simple-autoreload-server": "^0.2.7",
     "typescript": "^3.8.3"
   }
 }

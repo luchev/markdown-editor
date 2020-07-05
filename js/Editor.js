@@ -12,6 +12,12 @@ export class Editor {
         this.applyTheme();
         this.formatter.init(this.editor);
     }
+    setContent(content) {
+        this.formatter.setContent(content);
+    }
+    getContent() {
+        return this.formatter.getContent();
+    }
     injectAdditionalCssRules() {
         if (this.theme.additionalCssRules) {
             Object.entries(this.theme.additionalCssRules.rules).forEach(([identifier, properties]) => {

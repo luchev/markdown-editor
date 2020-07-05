@@ -1,19 +1,37 @@
 import { Formatter } from './Formatter';
 import { DOMHelper } from './DOMHelper';
+import { Compiler } from './Compiler';
 export class MdFormatter extends Formatter {
     constructor() {
         super(...arguments);
         this.editor = document.createElement('invalid');
-        this.dynamicRender = true;
-        this.hideSyntax = true;
-        this.caretDiv = null;
+        this.settings = {
+            dynamicRender: true,
+            showSyntax: true,
+        };
+        this.documentData = {
+            currentParagraph: null,
+            references: {},
+        };
+        this.compiler = new Compiler();
     }
     init(editor) {
         this.editor = editor;
-        this.initRegex();
         this.initMutationListeners();
         this.initKeyboardEventListeners();
         this.initMouseEventListeners();
+    }
+    setContent(content) {
+        const { html, references } = this.compiler.compileText(content, {});
+        this.editor.innerHTML = '';
+        for (const div of html) {
+            this.editor.appendChild(div);
+        }
+        this.documentData.references = references;
+    }
+    getContent() {
+        const content = '';
+        return content;
     }
     initMutationListeners() {
         const observerConfig = {
@@ -25,14 +43,10 @@ export class MdFormatter extends Formatter {
         observer.observe(this.editor, observerConfig);
     }
     initKeyboardEventListeners() {
-        this.editor.addEventListener('keydown', () => this.handleKeyDown());
         this.editor.addEventListener('keyup', () => this.handleKeyUp());
     }
     initMouseEventListeners() {
         this.editor.addEventListener('click', () => this.handleClick());
-    }
-    handleKeyDown() {
-        this.caretMoved();
     }
     handleKeyUp() {
         this.caretMoved();
@@ -53,52 +67,30 @@ export class MdFormatter extends Formatter {
         }
     }
     caretMoved() {
-        const caretDiv = this.getCaretDiv();
-        if (this.caretDiv !== caretDiv) {
-            if (this.caretDiv) {
-                this.caretDiv.setAttribute('data-active', 'false');
-                if (this.hideSyntax) {
-                    this.hideMdTokens(this.caretDiv);
+        const newCurrentParagraph = this.getCaretDiv();
+        if (this.documentData.currentParagraph !== newCurrentParagraph) {
+            if (this.documentData.currentParagraph) {
+                this.documentData.currentParagraph.setAttribute('data-active', 'false');
+                this.documentData.currentParagraph.setAttribute('data-text', this.documentData.currentParagraph.innerText);
+                const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
+                if (compiled instanceof HTMLElement) {
+                    this.documentData.currentParagraph.innerHTML = '';
+                    this.documentData.currentParagraph.appendChild(compiled);
+                }
+                else {
+                    const reference = compiled;
+                    console.log(reference);
+                    this.documentData.references[reference.reference] = reference.data;
+                    this.compiler.fixReferences([this.editor], reference);
                 }
             }
-            this.caretDiv = caretDiv;
-            if (this.caretDiv) {
-                this.caretDiv.setAttribute('data-active', 'true');
-                if (this.hideSyntax) {
-                    this.showMdTokens(this.caretDiv);
+            this.documentData.currentParagraph = newCurrentParagraph;
+            if (this.documentData.currentParagraph) {
+                this.documentData.currentParagraph.setAttribute('data-active', 'true');
+                const text = this.documentData.currentParagraph.getAttribute('data-text');
+                if (text) {
+                    this.documentData.currentParagraph.innerText = text;
                 }
-            }
-        }
-    }
-    getFirstRegexMatch(text, regex) {
-        const matches = text.match(regex);
-        if (matches && matches.length === 1) {
-            return matches[0];
-        }
-        return '';
-    }
-    showMdTokens(div) {
-        for (const child of div.children) {
-            if (child instanceof HTMLElement && child.tagName === 'SPAN') {
-                const span = child;
-                if (span.style.display === 'none') {
-                    const spanText = span.innerText;
-                    span.replaceWith(spanText);
-                }
-            }
-        }
-        div.normalize();
-    }
-    hideMdTokens(div) {
-        for (const [, regex] of MdFormatter.lineStartRules) {
-            if (regex.test(div.innerText)) {
-                const lineStart = this.getFirstRegexMatch(div.innerText, regex);
-                div.innerText = div.innerText.replace(lineStart, '');
-                const span = document.createElement('span');
-                span.style.display = 'none';
-                span.innerText = lineStart;
-                div.prepend(span);
-                break;
             }
         }
     }
@@ -178,8 +170,8 @@ export class MdFormatter extends Formatter {
                 svg.setAttribute('display', 'none');
             }
         }
-        this.dynamicRender = !this.dynamicRender;
-        if (this.dynamicRender) {
+        this.settings.dynamicRender = !this.settings.dynamicRender;
+        if (this.settings.dynamicRender) {
             this.enableRendering();
         }
         else {
@@ -197,8 +189,8 @@ export class MdFormatter extends Formatter {
                 svg.setAttribute('display', 'none');
             }
         }
-        this.hideSyntax = !this.hideSyntax;
-        if (this.hideSyntax) {
+        this.settings.showSyntax = !this.settings.showSyntax;
+        if (this.settings.showSyntax) {
             this.enableHideSyntax();
         }
         else {
@@ -206,137 +198,48 @@ export class MdFormatter extends Formatter {
         }
     }
     enableHideSyntax() {
-        for (const element of this.editor.children) {
-            if (element instanceof HTMLElement) {
-                this.hideMdTokens(element);
-            }
-        }
+        this.settings.showSyntax = true;
     }
     disableHideSyntax() {
-        for (const element of this.editor.children) {
-            if (element instanceof HTMLElement) {
-                this.showMdTokens(element);
-            }
-        }
-    }
-    initRegex() {
-        if (MdFormatter.lineStartRules.length === 0) {
-            MdFormatter.lineStartRules.push(['md-header-1', RegExp('^#{1}\\s')]);
-            MdFormatter.lineStartRules.push(['md-header-2', RegExp('^#{2}\\s')]);
-            MdFormatter.lineStartRules.push(['md-header-3', RegExp('^#{3}\\s')]);
-            MdFormatter.lineStartRules.push(['md-header-4', RegExp('^#{4}\\s')]);
-            MdFormatter.lineStartRules.push(['md-header-5', RegExp('^#{5}\\s')]);
-            MdFormatter.lineStartRules.push(['md-header-6', RegExp('^#{6}\\s')]);
-            MdFormatter.lineStartRules.push(['md-quote', RegExp('^>\\s')]);
-        }
-    }
-    initInlineRules() {
-        if (MdFormatter.inlineRules.length === 0) {
-            MdFormatter.inlineRules.push(['md-bold', '**']);
-            MdFormatter.inlineRules.push(['md-bold', '__']);
-            MdFormatter.inlineRules.push(['md-italics', '*']);
-            MdFormatter.inlineRules.push(['md-italics', '_']);
-            MdFormatter.inlineRules.push(['md-strikethrough', '--']);
-        }
+        this.settings.showSyntax = false;
     }
     handleMutations(mutations) {
-        if (this.dynamicRender) {
-            for (const mutation of mutations) {
-                this.handleMutation(mutation);
+        mutations.map((mutation) => {
+            if (mutation.type === 'childList') {
+                this.handleChildListMutation(mutation);
             }
-        }
-    }
-    handleMutation(mutation) {
-        if (mutation.type === 'childList') {
-            this.handleChildListMutation(mutation);
-        }
-        if (mutation.type === 'characterData') {
-            this.handleCharacterDataMutation(mutation);
-        }
+            else if (mutation.type === 'characterData') {
+                this.handleCharacterDataMutation(mutation);
+            }
+        });
     }
     handleChildListMutation(mutation) {
-        if (mutation.addedNodes.length > 0) {
-            const addedNode = mutation.addedNodes[0];
-            if (addedNode.nodeName === '#text' &&
-                addedNode.parentElement === this.editor) {
-                const newDiv = document.createElement('div');
-                this.editor.insertBefore(newDiv, addedNode.nextSibling);
-                newDiv.appendChild(addedNode);
-                const range = document.createRange();
-                const sel = window.getSelection();
-                range.setStart(this.editor.childNodes[0], newDiv.innerText.length);
-                range.collapse(true);
-                if (sel) {
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                }
-            }
-            if (addedNode.nodeName === 'DIV' && mutation.target !== this.editor) {
-                if (addedNode.nodeType === Node.ELEMENT_NODE) {
-                    const elementFromNode = addedNode;
-                    while (elementFromNode.hasAttributes()) {
-                        elementFromNode.removeAttribute(elementFromNode.attributes[0].name);
-                    }
-                }
-            }
+        if (mutation.addedNodes.length === 0) {
+            return;
         }
-        if (mutation.target.nodeType === Node.ELEMENT_NODE &&
-            mutation.target !== this.editor) {
-            const elementFromNode = mutation.target;
-            if (elementFromNode) {
-                const spacesRegex = RegExp('^\\s*$');
-                if (spacesRegex.test(elementFromNode.innerText)) {
-                    this.clearDivFormatting(elementFromNode);
-                }
+        const addedNode = mutation.addedNodes[0];
+        if (addedNode.nodeName === '#text' &&
+            addedNode.parentElement === this.editor) {
+            const newDiv = document.createElement('div');
+            this.editor.insertBefore(newDiv, addedNode.nextSibling);
+            newDiv.appendChild(addedNode);
+            const range = document.createRange();
+            const sel = window.getSelection();
+            range.setStart(this.editor.childNodes[0], newDiv.innerText.length);
+            range.collapse(true);
+            if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(range);
             }
         }
     }
     handleCharacterDataMutation(mutation) {
-        const div = mutation.target.parentElement;
-        if (div && this.dynamicRender) {
-            this.clearDivFormatting(div);
-            this.applyDivFormatting(div);
-        }
+        const element = mutation.target.parentElement;
     }
     disableRendering() {
-        for (const child of this.editor.children) {
-            if (child instanceof HTMLElement) {
-                const div = child;
-                this.clearDivFormatting(div);
-            }
-        }
+        this.settings.dynamicRender = false;
     }
     enableRendering() {
-        for (const child of this.editor.children) {
-            if (child instanceof HTMLElement) {
-                const div = child;
-                this.applyDivFormatting(div);
-            }
-        }
-    }
-    applyDivFormatting(div) {
-        for (const [className, regex] of MdFormatter.lineStartRules) {
-            if (regex.test(div.innerText)) {
-                div.className = className;
-            }
-        }
-        const asterisks = new RegExp('\\*+');
-        let match;
-        while ((match = asterisks.exec(div.innerText))) {
-            console.log(match);
-        }
-    }
-    clearDivFormatting(div) {
-        div.className = '';
-        for (const child of div.children) {
-            if (child instanceof HTMLElement && child.tagName === 'SPAN') {
-                const span = child;
-                const spanText = span.innerText;
-                span.replaceWith(spanText);
-            }
-        }
-        div.normalize();
+        this.settings.dynamicRender = true;
     }
 }
-MdFormatter.lineStartRules = [];
-MdFormatter.inlineRules = [];

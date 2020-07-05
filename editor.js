@@ -1,19 +1,249 @@
+
+class Compiler {
+    constructor() {
+        this.infixFormatters = {
+            '**': { openTag: '<strong>', closeTag: '</strong>' },
+            '__': { openTag: '<strong>', closeTag: '</strong>' },
+            '_': { openTag: '<em>', closeTag: '</em>' },
+            '*': { openTag: '<em>', closeTag: '</em>' },
+            '~~': { openTag: '<strike>', closeTag: '</strike>' },
+            '`': { openTag: '<code>', closeTag: '</code>' },
+        };
+        this.prefixFormatters = [
+            { regex: new RegExp('^# '), openTag: '<h1>', closeTag: '</h1>' },
+            { regex: new RegExp('^## '), openTag: '<h2>', closeTag: '</h2>' },
+            { regex: new RegExp('^### '), openTag: '<h3>', closeTag: '</h3>' },
+            { regex: new RegExp('^#### '), openTag: '<h4>', closeTag: '</h4>' },
+            { regex: new RegExp('^##### '), openTag: '<h5>', closeTag: '</h5>' },
+            { regex: new RegExp('^###### '), openTag: '<h6>', closeTag: '</h6>' },
+            { regex: new RegExp('^> '), openTag: '<blockquote>', closeTag: '</blockquote>' },
+        ];
+    }
+    compileText(text, references) {
+        const newReferences = references;
+        const paragraphs = this.splitStringToParagraphs(text);
+        const compiledElements = [];
+        for (const paragraph of paragraphs) {
+            const element = this.compileParagraph(paragraph, newReferences);
+            if (element instanceof HTMLElement) {
+                compiledElements.push(element);
+            }
+            else {
+                const reference = element;
+                newReferences[reference.reference] = reference.data;
+                this.fixReferences(compiledElements, reference);
+            }
+        }
+        return {
+            html: compiledElements,
+            references: newReferences,
+        };
+    }
+    compileParagraph(paragraph, references) {
+        let compiled = this.compilePrefix(paragraph);
+        if (typeof compiled !== 'string') {
+            return compiled;
+        }
+        else {
+            const inlineTokens = this.tokenizeParagraphForInfixCompilation(compiled);
+            compiled = this.compileInfixTokens(inlineTokens);
+            compiled = this.compileImage(compiled, references);
+            compiled = this.compileLink(compiled, references);
+            const div = document.createElement('div');
+            div.appendChild(DOMHelper.htmlElementFromString(compiled));
+            div.setAttribute('data-text', paragraph);
+            return div;
+        }
+    }
+    compileImage(paragraph, references) {
+        const imageRegex = /!\[(.*?)\]\((.*?) ("(.*?)")\)?/g;
+        for (const match of paragraph.matchAll(imageRegex)) {
+            const alt = match[1] !== undefined ? match[1] : '';
+            const link = match[2] !== undefined ? match[2] : '';
+            const title = match[4] !== undefined ? match[4] : '';
+            const htmlTag = `<img src="${link}" alt="${alt}" title="${title}">`;
+            paragraph = paragraph.replace(match[0], htmlTag);
+        }
+        const imageReferenceRegex = /!\[(.*?)\](\[(.*?)\])?/g;
+        for (const match of paragraph.matchAll(imageReferenceRegex)) {
+            const alt = match[1] !== undefined ? match[1] : '';
+            const ref = match[3] !== undefined ? match[3] : '';
+            let link = '';
+            let title = '';
+            if (references[ref] !== undefined) {
+                link = references[ref].link !== undefined ? references[ref].link : '';
+                title = references[ref].title !== undefined ? references[ref].title : '';
+            }
+            const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" data-reference="${ref}">`;
+            paragraph = paragraph.replace(match[0], htmlTag);
+        }
+        return paragraph;
+    }
+    compileLink(paragraph, references) {
+        const linkRegex = /\[(.*?)\](\((.*?)( "(.*)")?\)|\[(.*)\])?/g;
+        for (const match of paragraph.matchAll(linkRegex)) {
+            let htmlTag = match[0];
+            const name = match[1] !== undefined ? match[1] : '';
+            let link = match[3] !== undefined ? match[3] : '';
+            let title = match[5] !== undefined ? match[5] : '';
+            let ref = match[6] !== undefined ? match[6] : '';
+            if (match[2] && match[2].startsWith('(')) {
+                htmlTag = `<a href="${link}" title="${title}">${name}</a>`;
+            }
+            else {
+                if (match[2] === undefined) {
+                    ref = name;
+                }
+                if (references[ref] !== undefined) {
+                    link = references[ref].link !== undefined ? references[ref].link : '';
+                    title = references[ref].title !== undefined ? references[ref].title : '';
+                }
+                htmlTag = `<a href="${link}" title="${title}" data-reference="${ref}">${name}</a>`;
+            }
+            paragraph = paragraph.replace(match[0], htmlTag);
+        }
+        return paragraph;
+    }
+    tokenizeParagraphForInfixCompilation(paragraph) {
+        if (/^```/.test(paragraph)) {
+            return [paragraph];
+        }
+        const tokens = [];
+        const addDoubleToken = (char) => {
+            if (tokens[tokens.length - 1] === char) {
+                tokens[tokens.length - 1] = char.repeat(2);
+            }
+            else {
+                tokens.push(char);
+            }
+        };
+        for (const char of paragraph) {
+            if (tokens.length === 0) {
+                tokens.push(char);
+                continue;
+            }
+            if (char === '*' || char === '_' || char === '~') {
+                addDoubleToken(char);
+            }
+            else if (char === '`') {
+                tokens.push(char);
+            }
+            else {
+                if (this.infixFormatters[tokens[tokens.length - 1]] !== undefined) {
+                    tokens.push(char);
+                }
+                else {
+                    tokens[tokens.length - 1] = tokens[tokens.length - 1].concat(char);
+                }
+            }
+        }
+        return tokens;
+    }
+    compileInfixTokens(tokens) {
+        let compiled = '';
+        const formatTokenSet = new Set();
+        for (const token of tokens) {
+            if (this.infixFormatters[token] !== undefined) {
+                if (!formatTokenSet.has(token)) {
+                    formatTokenSet.add(token);
+                    compiled = compiled + this.infixFormatters[token].openTag + token;
+                }
+                else {
+                    formatTokenSet.delete(token);
+                    compiled = compiled + token + this.infixFormatters[token].closeTag;
+                }
+            }
+            else {
+                compiled = compiled + token;
+            }
+        }
+        return compiled;
+    }
+    compilePrefix(paragraph) {
+        for (const prefix of this.prefixFormatters) {
+            if (prefix.regex.test(paragraph)) {
+                return prefix.openTag + paragraph + prefix.closeTag;
+            }
+        }
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(paragraph)) {
+            return '<hr/>';
+        }
+        if (/^\[.*?\]:/.test(paragraph)) {
+            const anchorRegex = /^\[(.*)\]:\s*([^"]*)(\s)?("(.*)")?/;
+            const anchorParts = paragraph.match(anchorRegex);
+            if (anchorParts && anchorParts[1] !== undefined) {
+                return {
+                    reference: anchorParts[1],
+                    data: {
+                        link: anchorParts[2] !== undefined ? anchorParts[2] : '',
+                        title: anchorParts[5] !== undefined ? anchorParts[5] : '',
+                    },
+                };
+            }
+        }
+        return '<p>' + paragraph + '</p>';
+    }
+    fixReferences(elements, reference) {
+        elements.map((element) => element.querySelectorAll(`[data-reference="${reference.reference}"]`))
+            .map((nodes) => {
+            for (const node of nodes) {
+                node.setAttribute('title', reference.data.title);
+                if (node.tagName === 'A') {
+                    node.setAttribute('href', reference.data.link);
+                }
+                else if (node.tagName === 'IMG') {
+                    node.setAttribute('src', reference.data.link);
+                }
+            }
+        });
+    }
+    splitStringToParagraphs(text) {
+        const lines = text.split('\n');
+        const paragraphs = [];
+        let paragraphBuffer = '';
+        const appendBuffer = () => {
+            if (paragraphBuffer.length != 0) {
+                paragraphs.push(paragraphBuffer);
+                paragraphBuffer = '';
+            }
+        };
+        const specialParagraphStart = /^(#{1,6} |\d+\. |\* |\+ |- |> )/;
+        const horizontalLine = /^(-{3,}|\*{3,}|_{3,})$/;
+        const anchor = /^\[.+\]:/;
+        for (const line of lines) {
+            if (specialParagraphStart.test(line) || horizontalLine.test(line) ||
+                anchor.test(line) || line.includes('|')) {
+                appendBuffer();
+                paragraphs.push(line);
+            }
+            else if (line.trim() === '') {
+                appendBuffer();
+            }
+            else {
+                paragraphBuffer = paragraphBuffer.concat(line);
+            }
+        }
+        appendBuffer();
+        return paragraphs;
+    }
+}
 class CssHelper {
     constructor() {
-        CssHelper.styleElement = document.createElement("style");
-        CssHelper.styleElement.type = "text/css";
+        CssHelper.styleElement = document.createElement('style');
+        CssHelper.styleElement.type = 'text/css';
         document
-            .getElementsByTagName("head")[0]
+            .getElementsByTagName('head')[0]
             .appendChild(CssHelper.styleElement);
     }
     static injectCss(identifier, properties) {
         const cssTextPropertoes = CssHelper.stringifyCSSProperties(properties);
-        CssHelper.styleElement.innerHTML += `${identifier} { ${cssTextPropertoes} } \n`;
+        CssHelper.styleElement.innerHTML +=
+            `${identifier} { ${cssTextPropertoes} } \n`;
     }
     static stringifyCSSProperties(property) {
-        let cssString = "";
+        let cssString = '';
         Object.entries(property).forEach(([key, value]) => {
-            if (value !== "") {
+            if (value !== '') {
                 cssString += `${key}: ${value}; `;
             }
         });
@@ -21,15 +251,20 @@ class CssHelper {
     }
 }
 CssHelper.instance = new CssHelper();
+class CssRules {
+    constructor() {
+        this.rules = {};
+    }
+}
 class DOMHelper {
     static htmlElementFromString(html) {
-        const creationHelperElement = document.createElement("div");
+        const creationHelperElement = document.createElement('div');
         creationHelperElement.innerHTML = html.trim();
         if (creationHelperElement.firstChild &&
             creationHelperElement.firstChild.nodeType === Node.ELEMENT_NODE) {
             return creationHelperElement.firstChild;
         }
-        throw new Error("Failed to create element from html: " + html);
+        throw new Error('Failed to create element from html: ' + html);
     }
 }
 
@@ -38,17 +273,23 @@ class Editor {
     constructor(containerId, formatter, theme) {
         this.formatter = formatter;
         this.theme = theme;
-        this.container = document.createElement("div");
-        this.editor = document.createElement("div");
-        this.menu = document.createElement("div");
+        this.container = document.createElement('div');
+        this.editor = document.createElement('div');
+        this.menu = document.createElement('div');
         this.idPrefix = containerId;
         this.initializeContainer(this.idPrefix);
         this.applyTheme();
         this.formatter.init(this.editor);
     }
+    setContent(content) {
+        this.formatter.setContent(content);
+    }
+    getContent() {
+        return this.formatter.getContent();
+    }
     injectAdditionalCssRules() {
         if (this.theme.additionalCssRules) {
-            Object.entries(this.theme.additionalCssRules).forEach(([identifier, properties]) => {
+            Object.entries(this.theme.additionalCssRules.rules).forEach(([identifier, properties]) => {
                 CssHelper.injectCss(identifier, properties);
             });
         }
@@ -56,7 +297,8 @@ class Editor {
     injectScrollbarTheme() {
         if (this.theme.scrollbarTheme) {
             Object.entries(this.theme.scrollbarTheme).forEach(([identifier, properties]) => {
-                CssHelper.injectCss("#" + this.getEditorId() + "::" + identifier, properties);
+                const cssIdentifier = '#' + this.getEditorId() + '::' + identifier;
+                CssHelper.injectCss(cssIdentifier, properties);
             });
         }
     }
@@ -67,11 +309,11 @@ class Editor {
     createContainer(futureContainerId) {
         const futureContainer = document.getElementById(futureContainerId);
         if (!futureContainer) {
-            throw new Error("Cannot find element with id " + futureContainerId);
+            throw new Error('Cannot find element with id ' + futureContainerId);
         }
         const futureContainerParent = futureContainer.parentElement;
         if (!futureContainerParent) {
-            throw new Error("Cannot find parent of element with id " + futureContainerId);
+            throw new Error('Cannot find parent of element with id ' + futureContainerId);
         }
         this.createContainerId();
         futureContainerParent.replaceChild(this.container, futureContainer);
@@ -85,23 +327,27 @@ class Editor {
         this.menu.id = this.getMenuId();
         const settingsSvg = DOMHelper.htmlElementFromString(`
         <div style='display: flex; justify-content: flex-end;'>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
               <polyline points="9 18 15 12 9 6" />
           </svg>
-          <svg display='none' width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg display='none' width="24" height="24" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </div>`);
         this.menu.appendChild(settingsSvg);
-        settingsSvg.addEventListener("click", (event) => {
+        settingsSvg.addEventListener('click', (event) => {
             this.settingsClick(event, this.menu);
         });
     }
     createMenuSettingsItems() {
-        const settingsContainer = document.createElement("div");
+        const settingsContainer = document.createElement('div');
         this.menu.appendChild(settingsContainer);
-        settingsContainer.style.display = "none";
-        settingsContainer.style.flexDirection = "column";
+        settingsContainer.style.display = 'none';
+        settingsContainer.style.flexDirection = 'column';
         this.formatter
             .getSettings()
             .forEach((element) => settingsContainer.appendChild(element));
@@ -109,7 +355,7 @@ class Editor {
     createEditor() {
         this.container.appendChild(this.editor);
         this.editor.id = this.getEditorId();
-        this.editor.contentEditable = "true";
+        this.editor.contentEditable = 'true';
     }
     initializeContainer(futureContainerId) {
         this.createContainer(futureContainerId);
@@ -121,20 +367,20 @@ class Editor {
         if (target.parentElement) {
             const svgs = target.children;
             for (const svg of svgs) {
-                if (svg.hasAttribute("display")) {
-                    svg.removeAttribute("display");
+                if (svg.hasAttribute('display')) {
+                    svg.removeAttribute('display');
                 }
                 else {
-                    svg.setAttribute("display", "none");
+                    svg.setAttribute('display', 'none');
                 }
             }
-            if (target.parentElement.style.width === "") {
-                target.parentElement.style.width = "250px";
-                menu.children[1].style.display = "flex";
+            if (target.parentElement.style.width === '') {
+                target.parentElement.style.width = '250px';
+                menu.children[1].style.display = 'flex';
             }
             else {
-                target.parentElement.style.width = "";
-                menu.children[1].style.display = "none";
+                target.parentElement.style.width = '';
+                menu.children[1].style.display = 'none';
             }
         }
     }
@@ -166,49 +412,49 @@ class Editor {
     }
     getContainerBaseCssProperties() {
         return {
-            cursor: "default",
-            display: "flex",
-            "flex-direction": "row",
-            resize: "both",
-            overflow: "auto",
+            'cursor': 'default',
+            'display': 'flex',
+            'flex-direction': 'row',
+            'resize': 'both',
+            'overflow': 'auto',
         };
     }
     getMenuBaseCssProperties() {
         return {
-            "border-right": "1px solid rgb(83, 79, 86)",
-            margin: "20px 0px 20px 0px",
-            padding: "15px 20px 15px 20px",
-            display: "flex",
-            "flex-direction": "column",
+            'border-right': '1px solid rgb(83, 79, 86)',
+            'margin': '20px 0px 20px 0px',
+            'padding': '15px 20px 15px 20px',
+            'display': 'flex',
+            'flex-direction': 'column',
         };
     }
     getEditorBaseCssProperties() {
         return {
-            flex: "1",
-            outline: "none",
-            overflow: "auto",
-            "scrollbar-color": "red",
-            padding: "20px 30px 20px 30px",
-            margin: "10px 10px 10px 10px",
+            'flex': '1',
+            'outline': 'none',
+            'overflow': 'auto',
+            'scrollbar-color': 'red',
+            'padding': '20px 30px 20px 30px',
+            'margin': '10px 10px 10px 10px',
         };
     }
     getContainerIdentifier() {
-        return "#" + this.getContainerId();
+        return '#' + this.getContainerId();
     }
     getMenuIdentifier() {
-        return "#" + this.getMenuId();
+        return '#' + this.getMenuId();
     }
     getEditorIdentifier() {
-        return "#" + this.getEditorId();
+        return '#' + this.getEditorId();
     }
     getContainerId() {
-        return this.idPrefix + "-container";
+        return this.idPrefix + '-container';
     }
     getMenuId() {
-        return this.idPrefix + "-menu";
+        return this.idPrefix + '-menu';
     }
     getEditorId() {
-        return this.idPrefix + "-editor";
+        return this.idPrefix + '-editor';
     }
 }
 class Formatter {
@@ -250,20 +496,88 @@ var SpecialKey;
 })(SpecialKey || (SpecialKey = {}));
 
 
+var MdCss;
+(function (MdCss) {
+    MdCss["header1"] = ".md-header-1";
+    MdCss["header2"] = ".md-header-2";
+    MdCss["header3"] = ".md-header-3";
+    MdCss["header4"] = ".md-header-4";
+    MdCss["header5"] = ".md-header-5";
+    MdCss["header6"] = ".md-header-6";
+    MdCss["italics"] = ".md-italics";
+    MdCss["bold"] = ".md-bold";
+    MdCss["strikethrough"] = ".md-strikethrough";
+    MdCss["orderedList"] = ".md-ordered-list";
+    MdCss["unorderedList"] = ".md-unordered-list";
+    MdCss["link"] = ".md-link";
+    MdCss["image"] = ".md-image";
+    MdCss["inlineCode"] = ".md-inline-code";
+    MdCss["blockCode"] = ".md-block-code";
+    MdCss["tableHeader"] = ".md-table-header";
+    MdCss["tableCell"] = ".md-table-cell";
+    MdCss["quote"] = ".md-quote";
+    MdCss["horizontalLine"] = ".md-horizontal-line";
+})(MdCss || (MdCss = {}));
+class MdCssRules extends CssRules {
+    constructor() {
+        super(...arguments);
+        this.rules = {
+            '.md-header-1': {},
+            '.md-header-2': {},
+            '.md-header-3': {},
+            '.md-header-4': {},
+            '.md-header-5': {},
+            '.md-header-6': {},
+            '.md-italics': {},
+            '.md-bold': {},
+            '.md-strikethrough': {},
+            '.md-ordered-list': {},
+            '.md-unordered-list': {},
+            '.md-link': {},
+            '.md-image': {},
+            '.md-inline-code': {},
+            '.md-block-code': {},
+            '.md-table-header': {},
+            '.md-table-cell': {},
+            '.md-quote': {},
+            '.md-horizontal-line': {},
+        };
+    }
+}
+
+
+
 class MdFormatter extends Formatter {
     constructor() {
         super(...arguments);
-        this.editor = document.createElement("invalid");
-        this.dynamicRender = true;
-        this.hideSyntax = true;
-        this.caretDiv = null;
+        this.editor = document.createElement('invalid');
+        this.settings = {
+            dynamicRender: true,
+            showSyntax: true,
+        };
+        this.documentData = {
+            currentParagraph: null,
+            references: {},
+        };
+        this.compiler = new Compiler();
     }
     init(editor) {
         this.editor = editor;
-        this.initRegex();
         this.initMutationListeners();
         this.initKeyboardEventListeners();
         this.initMouseEventListeners();
+    }
+    setContent(content) {
+        const { html, references } = this.compiler.compileText(content, {});
+        this.editor.innerHTML = '';
+        for (const div of html) {
+            this.editor.appendChild(div);
+        }
+        this.documentData.references = references;
+    }
+    getContent() {
+        const content = '';
+        return content;
     }
     initMutationListeners() {
         const observerConfig = {
@@ -275,14 +589,10 @@ class MdFormatter extends Formatter {
         observer.observe(this.editor, observerConfig);
     }
     initKeyboardEventListeners() {
-        this.editor.addEventListener("keydown", () => this.handleKeyDown());
-        this.editor.addEventListener("keyup", () => this.handleKeyUp());
+        this.editor.addEventListener('keyup', () => this.handleKeyUp());
     }
     initMouseEventListeners() {
-        this.editor.addEventListener("click", () => this.handleClick());
-    }
-    handleKeyDown() {
-        this.caretMoved();
+        this.editor.addEventListener('click', () => this.handleClick());
     }
     handleKeyUp() {
         this.caretMoved();
@@ -303,52 +613,30 @@ class MdFormatter extends Formatter {
         }
     }
     caretMoved() {
-        const caretDiv = this.getCaretDiv();
-        if (this.caretDiv !== caretDiv) {
-            if (this.caretDiv) {
-                this.caretDiv.setAttribute("data-active", "false");
-                if (this.hideSyntax) {
-                    this.hideMdTokens(this.caretDiv);
+        const newCurrentParagraph = this.getCaretDiv();
+        if (this.documentData.currentParagraph !== newCurrentParagraph) {
+            if (this.documentData.currentParagraph) {
+                this.documentData.currentParagraph.setAttribute('data-active', 'false');
+                this.documentData.currentParagraph.setAttribute('data-text', this.documentData.currentParagraph.innerText);
+                const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
+                if (compiled instanceof HTMLElement) {
+                    this.documentData.currentParagraph.innerHTML = '';
+                    this.documentData.currentParagraph.appendChild(compiled);
+                }
+                else {
+                    const reference = compiled;
+                    console.log(reference);
+                    this.documentData.references[reference.reference] = reference.data;
+                    this.compiler.fixReferences([this.editor], reference);
                 }
             }
-            this.caretDiv = caretDiv;
-            if (this.caretDiv) {
-                this.caretDiv.setAttribute("data-active", "true");
-                if (this.hideSyntax) {
-                    this.showMdTokens(this.caretDiv);
+            this.documentData.currentParagraph = newCurrentParagraph;
+            if (this.documentData.currentParagraph) {
+                this.documentData.currentParagraph.setAttribute('data-active', 'true');
+                const text = this.documentData.currentParagraph.getAttribute('data-text');
+                if (text) {
+                    this.documentData.currentParagraph.innerText = text;
                 }
-            }
-        }
-    }
-    getFirstRegexMatch(text, regex) {
-        const matches = text.match(regex);
-        if (matches && matches.length === 1) {
-            return matches[0];
-        }
-        return "";
-    }
-    showMdTokens(div) {
-        for (const child of div.children) {
-            if (child instanceof HTMLElement && child.tagName === "SPAN") {
-                const span = child;
-                if (span.style.display === "none") {
-                    const spanText = span.innerText;
-                    span.replaceWith(spanText);
-                }
-            }
-        }
-        div.normalize();
-    }
-    hideMdTokens(div) {
-        for (const [, regex] of MdFormatter.lineStartRules) {
-            if (regex.test(div.innerText)) {
-                const lineStart = this.getFirstRegexMatch(div.innerText, regex);
-                div.innerText = div.innerText.replace(lineStart, "");
-                const span = document.createElement("span");
-                span.style.display = "none";
-                span.innerText = lineStart;
-                div.prepend(span);
-                break;
             }
         }
     }
@@ -358,35 +646,47 @@ class MdFormatter extends Formatter {
     getSettings() {
         const settingsHtml = [
             `
-      <div data-setting="dynamic-render" style='display: flex; flex-direction: row; justify-items: center; justify-content: space-between; margin-top: 20px;'>
+      <div data-setting="dynamic-render" style='display: flex;
+      flex-direction: row; justify-items: center;
+      justify-content: space-between; margin-top: 20px;'>
         <div style='display: flex;'>
           Dynamic render
         </div>
         <div style='display: flex;'>
-          <svg display="none" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <svg display="none" width="24" height="24" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="3"
+          stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
           </svg>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="3"
             stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 11 12 14 22 4" />
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            <path
+            d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </svg>
         </div>
       </div>
       `,
             `
-      <div data-setting="hide-syntax" style='display: flex; flex-direction: row; justify-items: center; justify-content: space-between; margin-top: 20px;'>
+      <div data-setting="hide-syntax"
+      style='display: flex; flex-direction: row; justify-items: center;
+      justify-content: space-between; margin-top: 20px;'>
         <div style='display: flex;'>
           Hide syntax
         </div>
         <div style='display: flex;'>
-          <svg display="none" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <svg display="none" width="24" height="24" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="3"
+          stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
           </svg>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+          <svg width="24" height="24" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor" stroke-width="3"
             stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 11 12 14 22 4" />
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            <path
+            d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </svg>
         </div>
       </div>
@@ -394,12 +694,12 @@ class MdFormatter extends Formatter {
         ];
         const settingsElements = settingsHtml.map((setting) => DOMHelper.htmlElementFromString(setting));
         settingsElements.forEach((element) => {
-            if (element.hasAttribute("data-setting")) {
-                if (element.getAttribute("data-setting") === "dynamic-render") {
-                    element.addEventListener("click", (event) => this.toggleDynamicRender(event));
+            if (element.hasAttribute('data-setting')) {
+                if (element.getAttribute('data-setting') === 'dynamic-render') {
+                    element.addEventListener('click', (event) => this.toggleDynamicRender(event));
                 }
-                else if (element.getAttribute("data-setting") === "hide-syntax") {
-                    element.addEventListener("click", (event) => this.toggleHideSyntax(event));
+                else if (element.getAttribute('data-setting') === 'hide-syntax') {
+                    element.addEventListener('click', (event) => this.toggleHideSyntax(event));
                 }
             }
         });
@@ -409,15 +709,15 @@ class MdFormatter extends Formatter {
         const settingsItem = event.currentTarget;
         const svgs = settingsItem?.children[1].children;
         for (const svg of svgs) {
-            if (svg.hasAttribute("display")) {
-                svg.removeAttribute("display");
+            if (svg.hasAttribute('display')) {
+                svg.removeAttribute('display');
             }
             else {
-                svg.setAttribute("display", "none");
+                svg.setAttribute('display', 'none');
             }
         }
-        this.dynamicRender = !this.dynamicRender;
-        if (this.dynamicRender) {
+        this.settings.dynamicRender = !this.settings.dynamicRender;
+        if (this.settings.dynamicRender) {
             this.enableRendering();
         }
         else {
@@ -428,15 +728,15 @@ class MdFormatter extends Formatter {
         const settingsItem = event.currentTarget;
         const svgs = settingsItem?.children[1].children;
         for (const svg of svgs) {
-            if (svg.hasAttribute("display")) {
-                svg.removeAttribute("display");
+            if (svg.hasAttribute('display')) {
+                svg.removeAttribute('display');
             }
             else {
-                svg.setAttribute("display", "none");
+                svg.setAttribute('display', 'none');
             }
         }
-        this.hideSyntax = !this.hideSyntax;
-        if (this.hideSyntax) {
+        this.settings.showSyntax = !this.settings.showSyntax;
+        if (this.settings.showSyntax) {
             this.enableHideSyntax();
         }
         else {
@@ -444,263 +744,184 @@ class MdFormatter extends Formatter {
         }
     }
     enableHideSyntax() {
-        for (const element of this.editor.children) {
-            if (element instanceof HTMLElement) {
-                this.hideMdTokens(element);
-            }
-        }
+        this.settings.showSyntax = true;
     }
     disableHideSyntax() {
-        for (const element of this.editor.children) {
-            if (element instanceof HTMLElement) {
-                this.showMdTokens(element);
-            }
-        }
-    }
-    initRegex() {
-        if (MdFormatter.lineStartRules.length === 0) {
-            MdFormatter.lineStartRules.push(["md-header-1", RegExp("^#{1}\\s")]);
-            MdFormatter.lineStartRules.push(["md-header-2", RegExp("^#{2}\\s")]);
-            MdFormatter.lineStartRules.push(["md-header-3", RegExp("^#{3}\\s")]);
-            MdFormatter.lineStartRules.push(["md-header-4", RegExp("^#{4}\\s")]);
-            MdFormatter.lineStartRules.push(["md-header-5", RegExp("^#{5}\\s")]);
-            MdFormatter.lineStartRules.push(["md-header-6", RegExp("^#{6}\\s")]);
-            MdFormatter.lineStartRules.push(["md-quote", RegExp("^>\\s")]);
-        }
-    }
-    initInlineRules() {
-        if (MdFormatter.inlineRules.length === 0) {
-            MdFormatter.inlineRules.push(["md-bold", "**"]);
-            MdFormatter.inlineRules.push(["md-bold", "__"]);
-            MdFormatter.inlineRules.push(["md-italics", "*"]);
-            MdFormatter.inlineRules.push(["md-italics", "_"]);
-            MdFormatter.inlineRules.push(["md-strikethrough", "--"]);
-        }
+        this.settings.showSyntax = false;
     }
     handleMutations(mutations) {
-        if (this.dynamicRender) {
-            for (const mutation of mutations) {
-                this.handleMutation(mutation);
+        mutations.map((mutation) => {
+            if (mutation.type === 'childList') {
+                this.handleChildListMutation(mutation);
             }
-        }
-    }
-    handleMutation(mutation) {
-        if (mutation.type === "childList") {
-            this.handleChildListMutation(mutation);
-        }
-        if (mutation.type === "characterData") {
-            this.handleCharacterDataMutation(mutation);
-        }
+            else if (mutation.type === 'characterData') {
+                this.handleCharacterDataMutation(mutation);
+            }
+        });
     }
     handleChildListMutation(mutation) {
-        if (mutation.addedNodes.length > 0) {
-            const addedNode = mutation.addedNodes[0];
-            if (addedNode.nodeName === "#text" &&
-                addedNode.parentElement === this.editor) {
-                const newDiv = document.createElement("div");
-                this.editor.insertBefore(newDiv, addedNode.nextSibling);
-                newDiv.appendChild(addedNode);
-                const range = document.createRange();
-                const sel = window.getSelection();
-                range.setStart(this.editor.childNodes[0], newDiv.innerText.length);
-                range.collapse(true);
-                if (sel) {
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                }
-            }
-            if (addedNode.nodeName === "DIV" && mutation.target !== this.editor) {
-                if (addedNode.nodeType === Node.ELEMENT_NODE) {
-                    const elementFromNode = addedNode;
-                    while (elementFromNode.hasAttributes()) {
-                        elementFromNode.removeAttribute(elementFromNode.attributes[0].name);
-                    }
-                }
-            }
+        if (mutation.addedNodes.length === 0) {
+            return;
         }
-        if (mutation.target.nodeType === Node.ELEMENT_NODE &&
-            mutation.target !== this.editor) {
-            const elementFromNode = mutation.target;
-            if (elementFromNode) {
-                const spacesRegex = RegExp("^\\s*$");
-                if (spacesRegex.test(elementFromNode.innerText)) {
-                    this.clearDivFormatting(elementFromNode);
-                }
+        const addedNode = mutation.addedNodes[0];
+        if (addedNode.nodeName === '#text' &&
+            addedNode.parentElement === this.editor) {
+            const newDiv = document.createElement('div');
+            this.editor.insertBefore(newDiv, addedNode.nextSibling);
+            newDiv.appendChild(addedNode);
+            const range = document.createRange();
+            const sel = window.getSelection();
+            range.setStart(this.editor.childNodes[0], newDiv.innerText.length);
+            range.collapse(true);
+            if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(range);
             }
         }
     }
     handleCharacterDataMutation(mutation) {
-        const div = mutation.target.parentElement;
-        if (div && this.dynamicRender) {
-            this.clearDivFormatting(div);
-            this.applyDivFormatting(div);
-        }
+        const element = mutation.target.parentElement;
     }
     disableRendering() {
-        for (const child of this.editor.children) {
-            if (child instanceof HTMLElement) {
-                const div = child;
-                this.clearDivFormatting(div);
-            }
-        }
+        this.settings.dynamicRender = false;
     }
     enableRendering() {
-        for (const child of this.editor.children) {
-            if (child instanceof HTMLElement) {
-                const div = child;
-                this.applyDivFormatting(div);
-            }
-        }
-    }
-    applyDivFormatting(div) {
-        for (const [className, regex] of MdFormatter.lineStartRules) {
-            if (regex.test(div.innerText)) {
-                div.className = className;
-            }
-        }
-    }
-    clearDivFormatting(div) {
-        div.className = "";
+        this.settings.dynamicRender = true;
     }
 }
-MdFormatter.lineStartRules = [];
-MdFormatter.inlineRules = [];
 
-
-const darkMDFormatterTheme = {
-    ".md-header-1": {
-        margin: "24px 0 16px 0",
-        "font-weight": "bold",
-        "line-height": "1.25",
-        "font-size": "2em",
-        "padding-bottom": ".3em",
-        "border-bottom": "1px solid #eaecef",
-    },
-    ".md-header-2": {
-        margin: "24px 0 16px 0",
-        "font-weight": "bold",
-        "line-height": "1.25",
-        "padding-bottom": ".3em",
-        "border-bottom": "1px solid #eaecef",
-        "font-size": "1.5em",
-    },
-    ".md-header-3": {
-        margin: "24px 0 16px 0",
-        "font-weight": "bold",
-        "line-height": "1.25",
-        "font-size": "1.25em",
-    },
-    ".md-header-4": {
-        margin: "24px 0 16px 0",
-        "font-weight": "bold",
-        "line-height": "1.25",
-        "font-size": "1em",
-    },
-    ".md-header-5": {
-        margin: "24px 0 16px 0",
-        "font-weight": "bold",
-        "line-height": "1.25",
-        "font-size": ".875em",
-    },
-    ".md-header-6": {
-        margin: "24px 0 16px 0",
-        "font-weight": "bold",
-        "line-height": "1.25",
-        "font-size": ".85em",
-    },
-    ".md-italics": {
-        "font-style": "italic",
-    },
-    ".md-bold": {
-        "font-weight": "bold",
-    },
-    ".md-strikethrough": {
-        "text-decoration": "line-through",
-    },
-    ".md-ordered-list": {
-        "list-style-type": "decimal",
-    },
-    ".md-unordered-list": {
-        "list-style-type": "circle",
-    },
-    ".md-link": {
-        "text-decoration": "none",
-        color: "rgb(77, 172, 253)",
-    },
-    ".md-image": {
-        "max-width": "100%",
-    },
-    ".md-inline-code": {
-        "font-family": "monospace",
-        padding: ".2em .4em",
-        "font-size": "85%",
-        "border-radius": "3px",
-        "background-color": "rgba(220, 224, 228, 0.1) !important",
-    },
-    ".md-block-code": {
-        "font-family": "monospace",
-        "border-radius": "3px",
-        "word-wrap": "normal",
-        padding: "16px",
-        background: "rgba(220, 224, 228, 0.1) !important",
-    },
-    ".md-table-header": {
-        "line-height": "1.5",
-        "border-spacing": "0",
-        "border-collapse": "collapse",
-        "text-align": "center",
-        "font-weight": "bold",
-        padding: "6px 13px",
-        border: "1px solid #dfe2e5",
-    },
-    ".md-table-cell": {
-        "line-height": "1.5",
-        "border-spacing": "0",
-        "border-collapse": "collapse",
-        "text-align": "right",
-        padding: "6px 13px",
-        border: "1px solid #dfe2e5",
-    },
-    ".md-quote": {
-        "border-spacing": "0",
-        "border-collapse": "collapse",
-        padding: "6px 13px",
-        "border-left": ".25em solid rgb(53, 59, 66)",
-    },
-    ".md-horizontal-line": {
-        "line-height": "1.5",
-        overflow: "hidden",
-        height: ".25em",
-        padding: "0",
-        margin: "24px 0",
-        background: "white",
-    },
+const darkMDFormatterTheme = new MdCssRules();
+darkMDFormatterTheme.rules[MdCss.header1] = {
+    'margin': '24px 0 16px 0',
+    'font-weight': 'bold',
+    'line-height': '1.25',
+    'font-size': '2em',
+    'padding-bottom': '.3em',
+    'border-bottom': '1px solid #eaecef',
+};
+darkMDFormatterTheme.rules[MdCss.header2] = {
+    'margin': '24px 0 16px 0',
+    'font-weight': 'bold',
+    'line-height': '1.25',
+    'padding-bottom': '.3em',
+    'border-bottom': '1px solid #eaecef',
+    'font-size': '1.5em',
+};
+darkMDFormatterTheme.rules[MdCss.header3] = {
+    'margin': '24px 0 16px 0',
+    'font-weight': 'bold',
+    'line-height': '1.25',
+    'font-size': '1.25em',
+};
+darkMDFormatterTheme.rules[MdCss.header4] = {
+    'margin': '24px 0 16px 0',
+    'font-weight': 'bold',
+    'line-height': '1.25',
+    'font-size': '1em',
+};
+darkMDFormatterTheme.rules[MdCss.header5] = {
+    'margin': '24px 0 16px 0',
+    'font-weight': 'bold',
+    'line-height': '1.25',
+    'font-size': '.875em',
+};
+darkMDFormatterTheme.rules[MdCss.header6] = {
+    'margin': '24px 0 16px 0',
+    'font-weight': 'bold',
+    'line-height': '1.25',
+    'font-size': '.85em',
+};
+darkMDFormatterTheme.rules[MdCss.italics] = {
+    'font-style': 'italic',
+};
+darkMDFormatterTheme.rules[MdCss.bold] = {
+    'font-weight': 'bold',
+};
+darkMDFormatterTheme.rules[MdCss.strikethrough] = {
+    'text-decoration': 'line-through',
+};
+darkMDFormatterTheme.rules[MdCss.orderedList] = {
+    'list-style-type': 'decimal',
+};
+darkMDFormatterTheme.rules[MdCss.unorderedList] = {
+    'list-style-type': 'circle',
+};
+darkMDFormatterTheme.rules[MdCss.link] = {
+    'text-decoration': 'none',
+    'color': 'rgb(77, 172, 253)',
+};
+darkMDFormatterTheme.rules[MdCss.image] = {
+    'max-width': '100%',
+};
+darkMDFormatterTheme.rules[MdCss.inlineCode] = {
+    'font-family': 'monospace',
+    'padding': '.2em .4em',
+    'font-size': '85%',
+    'border-radius': '3px',
+    'background-color': 'rgba(220, 224, 228, 0.1) !important',
+};
+darkMDFormatterTheme.rules[MdCss.blockCode] = {
+    'font-family': 'monospace',
+    'border-radius': '3px',
+    'word-wrap': 'normal',
+    'padding': '16px',
+    'background': 'rgba(220, 224, 228, 0.1) !important',
+};
+darkMDFormatterTheme.rules[MdCss.tableHeader] = {
+    'line-height': '1.5',
+    'border-spacing': '0',
+    'border-collapse': 'collapse',
+    'text-align': 'center',
+    'font-weight': 'bold',
+    'padding': '6px 13px',
+    'border': '1px solid #dfe2e5',
+};
+darkMDFormatterTheme.rules[MdCss.tableCell] = {
+    'line-height': '1.5',
+    'border-spacing': '0',
+    'border-collapse': 'collapse',
+    'text-align': 'right',
+    'padding': '6px 13px',
+    'border': '1px solid #dfe2e5',
+};
+darkMDFormatterTheme.rules[MdCss.quote] = {
+    'border-spacing': '0',
+    'border-collapse': 'collapse',
+    'padding': '6px 13px',
+    'border-left': '.25em solid rgb(53, 59, 66)',
+};
+darkMDFormatterTheme.rules[MdCss.horizontalLine] = {
+    'line-height': '1.5',
+    'overflow': 'hidden',
+    'height': '.25em',
+    'padding': '0',
+    'margin': '24px 0',
+    'background': 'white',
 };
 const darkScrollbar = {
-    "-webkit-scrollbar": {
-        width: "10px",
+    '-webkit-scrollbar': {
+        width: '10px',
     },
-    "-webkit-scrollbar-track": {
-        background: "rgb(53, 59, 66)",
-        "border-radius": "4px",
+    '-webkit-scrollbar-track': {
+        'background': 'rgb(53, 59, 66)',
+        'border-radius': '4px',
     },
-    "-webkit-scrollbar-thumb": {
-        background: "rgb(83, 79, 86)",
-        "border-radius": "4px",
+    '-webkit-scrollbar-thumb': {
+        'background': 'rgb(83, 79, 86)',
+        'border-radius': '4px',
     },
-    "-webkit-scrollbar-thumb:hover": {
-        background: "rgb(93, 99, 106)",
+    '-webkit-scrollbar-thumb:hover': {
+        background: 'rgb(93, 99, 106)',
     },
 };
 const darkEditorTheme = {
-    background: "#202225",
-    color: "#dcddde",
-    height: "50%",
-    "box-shadow": "0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19)",
+    'background': '#202225',
+    'color': '#dcddde',
+    'height': '50%',
+    'box-shadow': '0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19)',
 };
 const customTheme = {
     scrollbarTheme: darkScrollbar,
     additionalCssRules: darkMDFormatterTheme,
     editorTheme: darkEditorTheme,
 };
-const editor = new Editor("editor", new MdFormatter(), customTheme);
