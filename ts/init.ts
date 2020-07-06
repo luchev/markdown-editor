@@ -75,7 +75,7 @@ darkMDFormatterTheme.rules[MdCss.link] = {
   'color': 'rgb(77, 172, 253)',
 };
 darkMDFormatterTheme.rules[MdCss.image] = {
-  'max-width': '100%',
+  'max-width': '90%',
 };
 darkMDFormatterTheme.rules[MdCss.inlineCode] = {
   'font-family': 'monospace',

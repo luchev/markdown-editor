@@ -69,7 +69,7 @@ class Compiler {
             const alt = match[1] !== undefined ? match[1] : '';
             const link = match[2] !== undefined ? match[2] : '';
             const title = match[4] !== undefined ? match[4] : '';
-            const htmlTag = `<img src="${link}" alt="${alt}" title="${title}">`;
+            const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" class="md">`;
             paragraph = paragraph.replace(match[0], htmlTag);
         }
         const imageReferenceRegex = /!\[(.*?)\](\[(.*?)\])?/g;
@@ -78,11 +78,13 @@ class Compiler {
             const ref = match[3] !== undefined ? match[3] : '';
             let link = '';
             let title = '';
+            console.log(match);
+            console.log(link.replace(/<.*?>/, ''));
             if (references[ref] !== undefined) {
                 link = references[ref].link !== undefined ? references[ref].link : '';
                 title = references[ref].title !== undefined ? references[ref].title : '';
             }
-            const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" data-reference="${ref}">`;
+            const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" data-reference="${ref}" class="md">`;
             paragraph = paragraph.replace(match[0], htmlTag);
         }
         return paragraph;
@@ -292,14 +294,14 @@ class CssRules {
 
 
 class Editor {
-    constructor(containerId, formatter, theme) {
+    constructor(wrapperId, formatter, theme) {
         this.formatter = formatter;
         this.theme = theme;
-        this.container = document.createElement('div');
+        this.wrapper = document.createElement('div');
         this.editor = document.createElement('div');
         this.menu = document.createElement('div');
-        this.idPrefix = containerId;
-        this.initializeContainer(this.idPrefix);
+        this.idPrefix = wrapperId;
+        this.initializeWrapper(this.idPrefix);
         this.applyTheme();
         this.formatter.init(this.editor);
     }
@@ -324,28 +326,28 @@ class Editor {
             });
         }
     }
-    createContainerId() {
-        this.container.id = this.idPrefix;
-        this.container.id = this.getContainerId();
+    createWrapperId() {
+        this.wrapper.id = this.idPrefix;
+        this.wrapper.id = this.getWrapperId();
     }
-    createContainer(futureContainerId) {
-        const futureContainer = document.getElementById(futureContainerId);
-        if (!futureContainer) {
-            throw new Error('Cannot find element with id ' + futureContainerId);
+    createWrapper(futureWrapperId) {
+        const futureWrapper = document.getElementById(futureWrapperId);
+        if (!futureWrapper) {
+            throw new Error('Cannot find element with id ' + futureWrapperId);
         }
-        const futureContainerParent = futureContainer.parentElement;
-        if (!futureContainerParent) {
-            throw new Error('Cannot find parent of element with id ' + futureContainerId);
+        const futureWrapperParent = futureWrapper.parentElement;
+        if (!futureWrapperParent) {
+            throw new Error('Cannot find parent of element with id ' + futureWrapperId);
         }
-        this.createContainerId();
-        futureContainerParent.replaceChild(this.container, futureContainer);
+        this.createWrapperId();
+        futureWrapperParent.replaceChild(this.wrapper, futureWrapper);
     }
     createMenu() {
         this.createMenuBase();
         this.createMenuSettingsItems();
     }
     createMenuBase() {
-        this.container.appendChild(this.menu);
+        this.wrapper.appendChild(this.menu);
         this.menu.id = this.getMenuId();
         const settingsSvg = htmlElementFromString(`
         <div style='display: flex; justify-content: flex-end;'>
@@ -366,21 +368,21 @@ class Editor {
         });
     }
     createMenuSettingsItems() {
-        const settingsContainer = document.createElement('div');
-        this.menu.appendChild(settingsContainer);
-        settingsContainer.style.display = 'none';
-        settingsContainer.style.flexDirection = 'column';
+        const settingsWrapper = document.createElement('div');
+        this.menu.appendChild(settingsWrapper);
+        settingsWrapper.style.display = 'none';
+        settingsWrapper.style.flexDirection = 'column';
         this.formatter
             .getSettings()
-            .forEach((element) => settingsContainer.appendChild(element));
+            .forEach((element) => settingsWrapper.appendChild(element));
     }
     createEditor() {
-        this.container.appendChild(this.editor);
+        this.wrapper.appendChild(this.editor);
         this.editor.id = this.getEditorId();
         this.editor.contentEditable = 'true';
     }
-    initializeContainer(futureContainerId) {
-        this.createContainer(futureContainerId);
+    initializeWrapper(futureWrapperId) {
+        this.createWrapper(futureWrapperId);
         this.createMenu();
         this.createEditor();
     }
@@ -407,7 +409,7 @@ class Editor {
         }
     }
     applyTheme() {
-        this.injectContainerTheme();
+        this.injectWrapperTheme();
         this.injectMenuCss();
         this.injectEditorCss();
         this.injectScrollbarTheme();
@@ -419,20 +421,20 @@ class Editor {
     injectMenuCss() {
         CssInjector.injectCss(this.getMenuIdentifier(), this.getMenuBaseCssProperties());
     }
-    injectContainerTheme() {
-        const containerCss = this.getContainerCssProperties();
-        CssInjector.injectCss(this.getContainerIdentifier(), containerCss);
+    injectWrapperTheme() {
+        const wrapperCss = this.getWrapperCssProperties();
+        CssInjector.injectCss(this.getWrapperIdentifier(), wrapperCss);
     }
-    getContainerCssProperties() {
+    getWrapperCssProperties() {
         if (this.theme.editorTheme) {
             return {
-                ...this.getContainerBaseCssProperties(),
+                ...this.getWrapperBaseCssProperties(),
                 ...this.theme.editorTheme,
             };
         }
-        return this.getContainerBaseCssProperties();
+        return this.getWrapperBaseCssProperties();
     }
-    getContainerBaseCssProperties() {
+    getWrapperBaseCssProperties() {
         return {
             'cursor': 'default',
             'display': 'flex',
@@ -460,8 +462,8 @@ class Editor {
             'margin': '10px 10px 10px 10px',
         };
     }
-    getContainerIdentifier() {
-        return '#' + this.getContainerId();
+    getWrapperIdentifier() {
+        return '#' + this.getWrapperId();
     }
     getMenuIdentifier() {
         return '#' + this.getMenuId();
@@ -469,8 +471,8 @@ class Editor {
     getEditorIdentifier() {
         return '#' + this.getEditorId();
     }
-    getContainerId() {
-        return this.idPrefix + '-container';
+    getWrapperId() {
+        return this.idPrefix + '-wrapper';
     }
     getMenuId() {
         return this.idPrefix + '-menu';
@@ -990,7 +992,7 @@ darkMDFormatterTheme.rules[MdCss.link] = {
     'color': 'rgb(77, 172, 253)',
 };
 darkMDFormatterTheme.rules[MdCss.image] = {
-    'max-width': '100%',
+    'max-width': '90%',
 };
 darkMDFormatterTheme.rules[MdCss.inlineCode] = {
     'font-family': 'monospace',

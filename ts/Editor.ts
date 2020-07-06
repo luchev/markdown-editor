@@ -6,11 +6,11 @@ import {htmlElementFromString} from './HtmlGeneration';
 
 /**
  * Abstraction of the editor as a collection of
- * container, formatter, settings and themes
+ * wrapper, formatter, settings and themes
  */
 export class Editor {
-  // The container for the menu and the editor
-  private container: HTMLElement = document.createElement('div');
+  // The wrapper for the menu and the editor
+  private wrapper: HTMLElement = document.createElement('div');
 
   // The actual editor which holds the text content
   private editor: HTMLElement = document.createElement('div');
@@ -19,23 +19,23 @@ export class Editor {
   private menu: HTMLElement = document.createElement('div');
 
   // The Id of the original element which is used as a prefix
-  // for the Ids of the container, menu and editor
+  // for the Ids of the wrapper, menu and editor
   private idPrefix: string;
 
   /**
-   * @param {string} containerId HTML element id which
+   * @param {string} wrapperId HTML element id which
    * will become an ediable div
    * @param {Formatter} formatter Formatter
    * which determines how the content is stylized
    * @param {Theme} theme Collection of theme objects
    */
   constructor(
-      containerId: string,
+      wrapperId: string,
       private formatter: Formatter,
       private theme: Theme,
   ) {
-    this.idPrefix = containerId;
-    this.initializeContainer(this.idPrefix);
+    this.idPrefix = wrapperId;
+    this.initializeWrapper(this.idPrefix);
     this.applyTheme();
     this.formatter.init(this.editor); // TODO uncomment
   }
@@ -81,38 +81,38 @@ export class Editor {
     }
   }
 
-  /** Initialize the container Id
+  /** Initialize the wrapper Id
    */
-  private createContainerId(): void {
-    this.container.id = this.idPrefix;
-    this.container.id = this.getContainerId();
+  private createWrapperId(): void {
+    this.wrapper.id = this.idPrefix;
+    this.wrapper.id = this.getWrapperId();
   }
 
   /**
-   * Create the container
-   * @param {string} futureContainerId Id of the html element
-   * to convert to container for the editor
+   * Create the wrapper
+   * @param {string} futureWrapperId Id of the html element
+   * to convert to wrapper for the editor
    */
-  private createContainer(futureContainerId: string): void {
-    const futureContainer = document.getElementById(futureContainerId);
-    if (!futureContainer) {
-      throw new Error('Cannot find element with id ' + futureContainerId);
+  private createWrapper(futureWrapperId: string): void {
+    const futureWrapper = document.getElementById(futureWrapperId);
+    if (!futureWrapper) {
+      throw new Error('Cannot find element with id ' + futureWrapperId);
     }
 
-    const futureContainerParent = futureContainer.parentElement;
-    if (!futureContainerParent) {
+    const futureWrapperParent = futureWrapper.parentElement;
+    if (!futureWrapperParent) {
       throw new Error(
-          'Cannot find parent of element with id ' + futureContainerId,
+          'Cannot find parent of element with id ' + futureWrapperId,
       );
     }
 
-    this.createContainerId();
+    this.createWrapperId();
 
-    futureContainerParent.replaceChild(this.container, futureContainer);
+    futureWrapperParent.replaceChild(this.wrapper, futureWrapper);
   }
 
   /**
-   * Create the menu and add it to the container
+   * Create the menu and add it to the wrapper
    */
   private createMenu(): void {
     this.createMenuBase();
@@ -123,7 +123,7 @@ export class Editor {
    * Create the menu div and add the open/close button
    */
   private createMenuBase(): void {
-    this.container.appendChild(this.menu);
+    this.wrapper.appendChild(this.menu);
     this.menu.id = this.getMenuId();
 
     // Add settings button
@@ -151,31 +151,31 @@ export class Editor {
    * Create the settings elements in the HTML
    */
   private createMenuSettingsItems(): void {
-    const settingsContainer = document.createElement('div');
-    this.menu.appendChild(settingsContainer);
-    settingsContainer.style.display = 'none';
-    settingsContainer.style.flexDirection = 'column';
+    const settingsWrapper = document.createElement('div');
+    this.menu.appendChild(settingsWrapper);
+    settingsWrapper.style.display = 'none';
+    settingsWrapper.style.flexDirection = 'column';
     this.formatter
         .getSettings()
-        .forEach((element) => settingsContainer.appendChild(element));
+        .forEach((element) => settingsWrapper.appendChild(element));
   }
 
   /**
-   * Create the editor element and add it to the container
+   * Create the editor element and add it to the wrapper
    */
   private createEditor(): void {
-    this.container.appendChild(this.editor);
+    this.wrapper.appendChild(this.editor);
     this.editor.id = this.getEditorId();
     this.editor.contentEditable = 'true';
   }
 
   /**
-   * Create the editor content container as an editable div
-   * @param {string} futureContainerId Id of html element
-   * to convert to container for the editor
+   * Create the editor content wrapper as an editable div
+   * @param {string} futureWrapperId Id of html element
+   * to convert to wrapper for the editor
    */
-  private initializeContainer(futureContainerId: string): void {
-    this.createContainer(futureContainerId);
+  private initializeWrapper(futureWrapperId: string): void {
+    this.createWrapper(futureWrapperId);
     this.createMenu();
     this.createEditor();
   }
@@ -183,7 +183,7 @@ export class Editor {
   /**
    * Event handler function for settings clicking
    * @param {MouseEvent} event click on a setting
-   * @param {HTMLElement} menu the menu container as html element
+   * @param {HTMLElement} menu the menu wrapper as html element
    */
   private settingsClick(event: MouseEvent, menu: HTMLElement): void {
     const target = event.currentTarget as Element;
@@ -213,7 +213,7 @@ export class Editor {
    * Change the editor theme by changint its style property
    */
   private applyTheme(): void {
-    this.injectContainerTheme();
+    this.injectWrapperTheme();
     this.injectMenuCss();
     this.injectEditorCss();
     this.injectScrollbarTheme();
@@ -241,32 +241,32 @@ export class Editor {
   }
 
   /**
-   * Inject container CSS class into the HTML
+   * Inject wrapper CSS class into the HTML
    */
-  private injectContainerTheme(): void {
-    const containerCss = this.getContainerCssProperties();
-    CssInjector.injectCss(this.getContainerIdentifier(), containerCss);
+  private injectWrapperTheme(): void {
+    const wrapperCss = this.getWrapperCssProperties();
+    CssInjector.injectCss(this.getWrapperIdentifier(), wrapperCss);
   }
 
   /**
-   * @return {PropertiesHyphen} The combined hardcoded container CSS
-   * with the container css provided in the Theme
+   * @return {PropertiesHyphen} The combined hardcoded wrapper CSS
+   * with the wrapper css provided in the Theme
    */
-  private getContainerCssProperties(): PropertiesHyphen {
+  private getWrapperCssProperties(): PropertiesHyphen {
     if (this.theme.editorTheme) {
       return {
-        ...this.getContainerBaseCssProperties(),
+        ...this.getWrapperBaseCssProperties(),
         ...this.theme.editorTheme,
       };
     }
-    return this.getContainerBaseCssProperties();
+    return this.getWrapperBaseCssProperties();
   }
 
   /**
-   * Hardcoded CSS for the Container
+   * Hardcoded CSS for the wrapper
    * @return {PropertiesHyphen}
    */
-  private getContainerBaseCssProperties(): PropertiesHyphen {
+  private getWrapperBaseCssProperties(): PropertiesHyphen {
     return {
       'cursor': 'default',
       'display': 'flex',
@@ -306,10 +306,10 @@ export class Editor {
   }
 
   /**
-   * @return {string} Main container Id prepended with #
+   * @return {string} Main wrapper Id prepended with #
    */
-  private getContainerIdentifier(): string {
-    return '#' + this.getContainerId();
+  private getWrapperIdentifier(): string {
+    return '#' + this.getWrapperId();
   }
 
   /**
@@ -327,10 +327,10 @@ export class Editor {
   }
 
   /**
-   * @return {string} Id of the whole container
+   * @return {string} Id of the whole wrapper
    */
-  private getContainerId(): string {
-    return this.idPrefix + '-container';
+  private getWrapperId(): string {
+    return this.idPrefix + '-wrapper';
   }
 
   /**

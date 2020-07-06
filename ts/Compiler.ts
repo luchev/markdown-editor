@@ -111,7 +111,7 @@ export class Compiler {
       const alt = match[1] !== undefined ? match[1] : '';
       const link = match[2] !== undefined ? match[2] : '';
       const title = match[4] !== undefined ? match[4] : '';
-      const htmlTag = `<img src="${link}" alt="${alt}" title="${title}">`;
+      const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" class="md">`;
       paragraph = paragraph.replace(match[0], htmlTag);
     }
 
@@ -122,11 +122,13 @@ export class Compiler {
       const ref = match[3] !== undefined ? match[3] : '';
       let link = '';
       let title = '';
+      console.log(match);
+      console.log(link.replace(/<.*?>/, ''));
       if (references[ref] !== undefined) {
         link = references[ref].link !== undefined ? references[ref].link : '';
         title = references[ref].title !== undefined ? references[ref].title : '';
       }
-      const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" data-reference="${ref}">`;
+      const htmlTag = `<img src="${link}" alt="${alt}" title="${title}" data-reference="${ref}" class="md">`;
       paragraph = paragraph.replace(match[0], htmlTag);
     }
     return paragraph;
