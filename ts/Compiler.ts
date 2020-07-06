@@ -149,7 +149,7 @@ export class Compiler {
       let ref = match[6] !== undefined ? match[6] : '';
 
       if (match[2] && match[2].startsWith('(')) { // Compile standard link tags
-        htmlTag = `<a href="${link}" title="${title}">${name}</a>`;
+        htmlTag = `<a href="${link}" title="${title}" class="md">${name}</a>`;
       } else { // Compile link tags with references
         if (match[2] === undefined) { // Handle references the reference is the name
           ref = name;
@@ -158,7 +158,7 @@ export class Compiler {
           link = references[ref].link !== undefined ? references[ref].link : '';
           title = references[ref].title !== undefined ? references[ref].title : '';
         }
-        htmlTag = `<a href="${link}" title="${title}" data-reference="${ref}">${name}</a>`;
+        htmlTag = `<a href="${link}" title="${title}" data-reference="${ref}" class="md">${name}</a>`;
       }
       paragraph = paragraph.replace(match[0], htmlTag);
     }
