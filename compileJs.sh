@@ -5,6 +5,6 @@ do
     js=$(ls js/ | grep -vi "init.js" | sed 's/^/js\//' | xargs cat)
     init=$(cat js/init.js)
     out="$js"$'\n'"$init"
-    out=$(echo "$out" | sed 's/export class/class/' | sed 's/export var/var/' | sed 's/^import.*//' | sed 's/^"use strict";//')
+    out=$(echo "$out" | sed 's/export class/class/' | sed 's/export function/function/' | sed 's/export var/var/' | sed 's/^import.*//' | sed 's/^"use strict";//')
     echo "$out" > editor.js
 done

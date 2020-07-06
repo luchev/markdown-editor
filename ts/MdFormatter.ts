@@ -1,7 +1,8 @@
 import {Formatter} from './Formatter';
-import {DOMHelper} from './DOMHelper';
+import {htmlElementFromString} from './HtmlGeneration';
 import {Compiler} from './Compiler';
 import {ReferenceDictionary} from './Compiler';
+import {CssInjector} from './CssInjector';
 
 interface Settings {
   dynamicRender: boolean;
@@ -24,7 +25,7 @@ export class MdFormatter extends Formatter {
   // Settings for the formatter/compiler
   private settings: Settings = {
     dynamicRender: true,
-    showSyntax: true,
+    showSyntax: false,
   }
 
   // Data specific to the currently open document
@@ -45,6 +46,10 @@ export class MdFormatter extends Formatter {
     this.initMutationListeners();
     this.initKeyboardEventListeners();
     this.initMouseEventListeners();
+
+    CssInjector.injectCss('.md-token', {
+      display: 'none',
+    });
   }
 
   /** Set the content of the current document
@@ -53,8 +58,8 @@ export class MdFormatter extends Formatter {
   setContent(content: string): void {
     const {html, references} = this.compiler.compileText(content, {});
     this.editor.innerHTML = '';
-    for (const div of html) {
-      this.editor.appendChild(div);
+    for (const element of html) {
+      this.editor.appendChild(element);
     }
 
     this.documentData.references = references;
@@ -64,8 +69,16 @@ export class MdFormatter extends Formatter {
    * @return {string}
    */
   getContent(): string {
-    // TODO
-    const content = '';
+    let content = '';
+    for (const paragraph of this.editor.childNodes) {
+      const element = paragraph as HTMLElement;
+      if (element.hasAttribute('data-text')) {
+        content += element.getAttribute('data-text');
+      } else {
+        content += element.innerText;
+      }
+      content += '\n\n';
+    }
     return content;
   }
 
@@ -90,18 +103,27 @@ export class MdFormatter extends Formatter {
 
   /** Initialize keyboard event listeners */
   private initKeyboardEventListeners(): void {
+    // this.editor.addEventListener('keydown', () => this.handleKeyDown(event));
     this.editor.addEventListener('keyup', () => this.handleKeyUp());
   }
 
-  /** Initialize keyboard event listeners */
+  /** Initialize mouse event listeners */
   private initMouseEventListeners(): void {
     this.editor.addEventListener('click', () => this.handleClick());
   }
 
+  // /** Handle hotkeys
+  //  * @param {KeyboardEvent | undefined} event
+  //  */
+  // private handleKeyDown(event: Event | undefined): void {
+  //   // TODO
+  // }
+
   /** Handle hotkeys
-   * @param {KeyboardEvent} event
+   * @param {KeyboardEvent | undefined} event
    */
   private handleKeyUp(): void {
+  // private handleKeyUp(event: Event | undefined): void {
     this.caretMoved();
   }
 
@@ -126,33 +148,119 @@ export class MdFormatter extends Formatter {
     }
   }
 
-  /** Handle caret entering a new div */
+  /** Compile the text in the current paragraph to html and display the html instead of the text
+   */
+  private compileCurrentParagraph(): void {
+    if (this.documentData.currentParagraph) {
+      this.documentData.currentParagraph.setAttribute('data-text', this.documentData.currentParagraph.innerText);
+      const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
+      this.documentData.currentParagraph.parentElement?.replaceChild(compiled.html, this.documentData.currentParagraph);
+      this.documentData.currentParagraph = compiled.html;
+      if (compiled.reference) {
+        this.documentData.references[compiled.reference.name] = compiled.reference.data;
+        this.compiler.fixReferences([this.editor], compiled.reference);
+      }
+    }
+  }
+
+  /** Strip the html from the current paragraph and display only the raw text
+   * and move the carret to the appropriate position
+   * @param {number} caretPosition the index where to move the carret
+   */
+  private decompileCurrentParagraph(caretPosition: number): void {
+    if (this.documentData.currentParagraph) {
+      const text = this.documentData.currentParagraph.getAttribute('data-text');
+      this.documentData.currentParagraph.removeAttribute('data-text');
+      if (text) {
+        this.documentData.currentParagraph.innerText = text;
+      }
+      this.setCaretCharacterOffsetWithin(this.documentData.currentParagraph, caretPosition);
+    }
+  }
+
+  /** Handle caret entering a new paragraph */
   private caretMoved(): void {
     const newCurrentParagraph = this.getCaretDiv();
     if (this.documentData.currentParagraph !== newCurrentParagraph) {
-      if (this.documentData.currentParagraph) {
-        this.documentData.currentParagraph.setAttribute('data-active', 'false');
-        this.documentData.currentParagraph.setAttribute('data-text', this.documentData.currentParagraph.innerText);
-        const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
-        if (compiled instanceof HTMLElement) {
-          this.documentData.currentParagraph.innerHTML = '';
-          this.documentData.currentParagraph.appendChild(compiled);
+      let caretPosition = 0;
+      if (newCurrentParagraph) {
+        caretPosition = this.getCaretCharacterOffsetWithin(newCurrentParagraph);
+      }
+
+      if (this.settings.dynamicRender) {
+        this.compileCurrentParagraph();
+        this.documentData.currentParagraph = newCurrentParagraph;
+        this.decompileCurrentParagraph(caretPosition);
+      } else {
+        this.documentData.currentParagraph = newCurrentParagraph;
+      }
+    }
+  }
+
+  /**
+   * @param {HTMLElement | null} element
+   * @return {number}
+   */
+  private getCaretCharacterOffsetWithin(element: HTMLElement | null): number {
+    if (!element) {
+      return -1;
+    }
+    let caretOffset = 0;
+    const win = window;
+    const sel = win.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const preCaretRange = range.cloneRange();
+      preCaretRange.selectNodeContents(element);
+      preCaretRange.setEnd(range.endContainer, range.endOffset);
+      caretOffset = preCaretRange.toString().length;
+    }
+    return caretOffset;
+  }
+
+  /**
+   * @param {HTMLElement} element
+   * @param {number} offset
+   */
+  private setCaretCharacterOffsetWithin(element: HTMLElement, offset: number): void {
+    const createRange = (node: ChildNode, offset: number, range: Range | null): Range => {
+      if (!range) {
+        range = document.createRange();
+        range.selectNode(node);
+        range.setStart(node, 0);
+      }
+
+      if (offset === 0) {
+        range.setEnd(node, offset);
+      } else if (node && offset > 0) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (node.textContent && node.textContent.length < offset) {
+            offset -= node.textContent.length;
+          } else {
+            range.setEnd(node, offset);
+            offset = 0;
+          }
         } else {
-          const reference = compiled;
-          console.log(reference);
-          this.documentData.references[reference.reference] = reference.data;
-          this.compiler.fixReferences([this.editor], reference);
+          for (let lp = 0; lp < node.childNodes.length; lp++) {
+            range = createRange(node.childNodes[lp], offset, range);
+
+            if (offset === 0) {
+              break;
+            }
+          }
         }
       }
 
-      this.documentData.currentParagraph = newCurrentParagraph;
+      return range;
+    };
+    if (offset >= 0) {
+      const selection = window.getSelection();
+      const range = createRange(element, offset, null);
 
-      if (this.documentData.currentParagraph) {
-        this.documentData.currentParagraph.setAttribute('data-active', 'true');
-        const text = this.documentData.currentParagraph.getAttribute('data-text');
-        if (text) {
-          this.documentData.currentParagraph.innerText = text;
-        }
+      if (range && selection) {
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
       }
     }
   }
@@ -218,7 +326,7 @@ export class MdFormatter extends Formatter {
     ];
 
     const settingsElements = settingsHtml.map((setting) =>
-      DOMHelper.htmlElementFromString(setting),
+      htmlElementFromString(setting),
     );
 
     // TODO convert the following foreach to event delegation
@@ -256,9 +364,26 @@ export class MdFormatter extends Formatter {
 
     this.settings.dynamicRender = !this.settings.dynamicRender;
     if (this.settings.dynamicRender) {
-      this.enableRendering();
+      this.setContent(this.getContent());
     } else {
-      this.disableRendering();
+      const newParagraphs: HTMLElement[] = [];
+      for (const paragraph of this.editor.childNodes) {
+        const element = paragraph as HTMLElement;
+        const p = document.createElement('p');
+        if (element.hasAttribute('data-text')) {
+          const text = element.getAttribute('data-text');
+          if (text) {
+            p.innerText = text;
+          }
+        } else {
+          p.innerText = element.innerText;
+        }
+        newParagraphs.push(p);
+      }
+      this.editor.innerHTML = '';
+      for (const element of newParagraphs) {
+        this.editor.appendChild(element);
+      }
     }
   }
 
@@ -279,22 +404,14 @@ export class MdFormatter extends Formatter {
 
     this.settings.showSyntax = !this.settings.showSyntax;
     if (this.settings.showSyntax) {
-      this.enableHideSyntax();
+      CssInjector.injectCss('.md-token', {
+        display: '',
+      });
     } else {
-      this.disableHideSyntax();
+      CssInjector.injectCss('.md-token', {
+        display: 'none',
+      });
     }
-  }
-
-  /** Enable hiding syntax, aka MD identifiers like "# " and "** <some-text> **"
-   */
-  private enableHideSyntax(): void {
-    this.settings.showSyntax = true;
-  }
-
-  /** Disable hiding syntax, aka MD identifiers like "# " and "** <some-text> **"
-   */
-  private disableHideSyntax(): void {
-    this.settings.showSyntax = false;
   }
 
   /** Handle array of Mutations
@@ -305,7 +422,7 @@ export class MdFormatter extends Formatter {
       if (mutation.type === 'childList') {
         this.handleChildListMutation(mutation);
       } else if (mutation.type === 'characterData') {
-        this.handleCharacterDataMutation(mutation);
+        // this.handleCharacterDataMutation(mutation);
       }
     });
   }
@@ -329,6 +446,7 @@ export class MdFormatter extends Formatter {
       const newDiv = document.createElement('div');
       this.editor.insertBefore(newDiv, addedNode.nextSibling);
       newDiv.appendChild(addedNode);
+      this.documentData.currentParagraph = newDiv;
 
       // Move cursor to end of line
       const range: Range = document.createRange();
@@ -339,24 +457,13 @@ export class MdFormatter extends Formatter {
         sel.removeAllRanges();
         sel.addRange(range);
       }
+    } else if (addedNode.nodeName === '#text') {
+      if (addedNode.nodeValue) {
+        const currentText = (mutation.target as HTMLElement).getAttribute('data-text');
+        if (currentText) {
+          (mutation.target as HTMLElement).setAttribute('data-text', currentText + addedNode.nodeValue);
+        }
+      }
     }
-  }
-
-  /** Handle a single Mutation of type characterData
-   * @param {MutationRecord} mutation The mutation that happened
-   */
-  private handleCharacterDataMutation(mutation: MutationRecord): void {
-    const element = mutation.target.parentElement;
-    // TODO
-  }
-
-  /** Disable and Remove all formatting */
-  private disableRendering(): void {
-    this.settings.dynamicRender = false;
-  }
-
-  /** Enable and apply all formatting */
-  private enableRendering(): void {
-    this.settings.dynamicRender = true;
   }
 }

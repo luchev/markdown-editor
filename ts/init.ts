@@ -9,6 +9,12 @@ import {MdFormatter} from './MdFormatter';
  * Create Markdown Theme
  */
 const darkMDFormatterTheme: MdCssRules = new MdCssRules();
+darkMDFormatterTheme.rules[MdCss.global] = {
+  'font-family': 'sans-serif',
+};
+darkMDFormatterTheme.rules[MdCss.paragraph] = {
+  'font-size': '1em',
+};
 darkMDFormatterTheme.rules[MdCss.header1] = {
   'margin': '24px 0 16px 0',
   'font-weight': 'bold',
@@ -145,6 +151,113 @@ const darkEditorTheme: EditorTheme = {
     '0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19)',
 };
 
+const sampleMarkdownText =
+  `
+# Title 1
+## Title 2
+### Title 3
+#### Title 4
+##### Title 5
+###### Title 6
+Paragraph under a title.
+
+Paragraph separated by a new line.
+Which spans multiple lines.
+To remind us that a parahraph is separated from other paragraphs by an empty line.
+
+> quote
+[anchor]: https://google.com
+
+Text above line.
+---
+Text between lines.
+****
+## Title 2 between lines
+_____
+Text under the last line.
+
+Paragraph with **bold text** and __more bold text__
+
+And this is some *italics with asterisk* and _italics with underscores_
+
+How about combined ***italics* and bold** or **_italics_ and bold using _underscores_**
+
+Then some ~~strikethrough text~~
+
+Here's how \`inline code\` looks like.
+
+[I'm an inline-style link](https://www.google.com)
+
+[I'm an inline-style link with title](https://www.google.com "Google's Homepage")
+
+Links can also be inline: [I'm a reference-style link][anchor]
+
+Or leave it empty and use the [anchor with text].
+
+[anchor with text]: https://youtube.com "YouTube"
+
+Inline-style image: ![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Logo Title Text 1")
+
+Reference-style image:
+![alt text][logo]
+
+[logo]: https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Logo Title Text 2"
+
+### Here's multiline code block with specified language
+\`\`\`javascript
+    var s = "JavaScript syntax highlighting";
+    alert( s );
+\`\`\`
+
+### Here's multiline code block without language specification
+
+\`\`\`
+    No language indicated, so no syntax highlighting.
+    But let's throw in a <b>tag</b>.
+\`\`\`
+
+Next is an unordered list
+* Unordered list can use asterisks
+- Or minuses
++ Or pluses
+
+And unordered list with sub lists
+* Unordered list with
+ - subitem
+ + and another subitem
+* and we can continue the original list
+
+Next we have ordered lists
+1. First item
+2. Second item (number doesn't matter)
+1. Last ordered item
+
+And mixed lists
+23. Ordered list
+ - unordered sublist item 1
+ - unordered sublist item 2
+12. and then continue the ordered list
+ 1. with an ordered sublist
+
+At the end there's tables
+
+| Tables        | Are           | Cool  |
+| ------------- |:-------------:| -----:|
+| col 3 is      | right-aligned | $1600 |
+| col 2 is      | centered      |   $12 |
+| zebra stripes | are neat      |    $1 |
+
+And tables with wonky syntax
+Markdown | Less | Pretty
+--- | --- | ---
+*Still* | \`renders\` | **nicely**
+1 | 2 | 3
+
+And | tables
+without | headers
+
+        `;
+
 /**
  * Example usage
  */
@@ -154,4 +267,6 @@ const customTheme: Theme = {
   editorTheme: darkEditorTheme,
 };
 
-// const editor = new Editor('editor', new MdFormatter(), customTheme);
+
+const editor = new Editor('editor', new MdFormatter(), customTheme);
+editor.setContent(sampleMarkdownText);

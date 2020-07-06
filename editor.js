@@ -1,6 +1,10 @@
 
 class Compiler {
     constructor() {
+        this.tokenHtmlTag = {
+            openTag: '<span class="md-token">',
+            closeTag: '</span>',
+        };
         this.infixFormatters = {
             '**': { openTag: '<strong>', closeTag: '</strong>' },
             '__': { openTag: '<strong>', closeTag: '</strong>' },
@@ -17,21 +21,22 @@ class Compiler {
             { regex: new RegExp('^##### '), openTag: '<h5>', closeTag: '</h5>' },
             { regex: new RegExp('^###### '), openTag: '<h6>', closeTag: '</h6>' },
             { regex: new RegExp('^> '), openTag: '<blockquote>', closeTag: '</blockquote>' },
+            { regex: new RegExp('^- '), openTag: '<li>', closeTag: '</li>' },
+            { regex: new RegExp('^\\* '), openTag: '<li>', closeTag: '</li>' },
+            { regex: new RegExp('^\\+ '), openTag: '<li>', closeTag: '</li>' },
+            { regex: new RegExp('^[0-9]+\\. '), openTag: '<li style="list-style:decimal">', closeTag: '</li>' },
         ];
     }
-    compileText(text, references) {
-        const newReferences = references;
+    compileText(text, startingReferences) {
+        const newReferences = startingReferences;
         const paragraphs = this.splitStringToParagraphs(text);
         const compiledElements = [];
         for (const paragraph of paragraphs) {
-            const element = this.compileParagraph(paragraph, newReferences);
-            if (element instanceof HTMLElement) {
-                compiledElements.push(element);
-            }
-            else {
-                const reference = element;
-                newReferences[reference.reference] = reference.data;
-                this.fixReferences(compiledElements, reference);
+            const compiled = this.compileParagraph(paragraph, newReferences);
+            compiledElements.push(compiled.html);
+            if (compiled.reference) {
+                newReferences[compiled.reference.name] = compiled.reference.data;
+                this.fixReferences(compiledElements, compiled.reference);
             }
         }
         return {
@@ -40,19 +45,22 @@ class Compiler {
         };
     }
     compileParagraph(paragraph, references) {
-        let compiled = this.compilePrefix(paragraph);
-        if (typeof compiled !== 'string') {
-            return compiled;
+        const compiled = this.compilePrefix(paragraph);
+        if (compiled.reference) {
+            return {
+                html: htmlElementFromString('<p>' + compiled.str + '<p>'),
+                reference: compiled.reference,
+            };
         }
         else {
-            const inlineTokens = this.tokenizeParagraphForInfixCompilation(compiled);
-            compiled = this.compileInfixTokens(inlineTokens);
-            compiled = this.compileImage(compiled, references);
-            compiled = this.compileLink(compiled, references);
-            const div = document.createElement('div');
-            div.appendChild(DOMHelper.htmlElementFromString(compiled));
-            div.setAttribute('data-text', paragraph);
-            return div;
+            const inlineTokens = this.tokenizeParagraphForInfixCompilation(compiled.str);
+            compiled.str = this.compileInfixTokens(inlineTokens);
+            compiled.str = this.compileImage(compiled.str, references);
+            compiled.str = this.compileLink(compiled.str, references);
+            const element = htmlElementFromString(compiled.str);
+            element.setAttribute('data-text', paragraph);
+            element.classList.add('md');
+            return { html: element };
         }
     }
     compileImage(paragraph, references) {
@@ -117,6 +125,10 @@ class Compiler {
                 tokens.push(char);
             }
         };
+        if (/^<li>\* /.test(paragraph)) {
+            paragraph = paragraph.substr(6);
+            tokens.push('<li>* ');
+        }
         for (const char of paragraph) {
             if (tokens.length === 0) {
                 tokens.push(char);
@@ -146,11 +158,14 @@ class Compiler {
             if (this.infixFormatters[token] !== undefined) {
                 if (!formatTokenSet.has(token)) {
                     formatTokenSet.add(token);
-                    compiled = compiled + this.infixFormatters[token].openTag + token;
+                    compiled = compiled +
+                        this.infixFormatters[token].openTag + this.tokenHtmlTag.openTag + token +
+                        this.tokenHtmlTag.closeTag;
                 }
                 else {
                     formatTokenSet.delete(token);
-                    compiled = compiled + token + this.infixFormatters[token].closeTag;
+                    compiled = compiled + this.tokenHtmlTag.openTag + token + this.tokenHtmlTag.closeTag +
+                        this.infixFormatters[token].closeTag;
                 }
             }
             else {
@@ -162,29 +177,39 @@ class Compiler {
     compilePrefix(paragraph) {
         for (const prefix of this.prefixFormatters) {
             if (prefix.regex.test(paragraph)) {
-                return prefix.openTag + paragraph + prefix.closeTag;
+                const prefixMatch = paragraph.match(prefix.regex);
+                if (prefixMatch) {
+                    const prefixString = prefixMatch[0];
+                    const paragraphWithoutPrefixFormatter = paragraph.substr(prefixString.length);
+                    const paragraphContent = this.tokenHtmlTag.openTag + prefixString + this.tokenHtmlTag.closeTag +
+                        paragraphWithoutPrefixFormatter;
+                    return { str: prefix.openTag + paragraphContent + prefix.closeTag };
+                }
             }
         }
         if (/^(-{3,}|\*{3,}|_{3,})$/.test(paragraph)) {
-            return '<hr/>';
+            return { str: '<hr/>' };
         }
         if (/^\[.*?\]:/.test(paragraph)) {
             const anchorRegex = /^\[(.*)\]:\s*([^"]*)(\s)?("(.*)")?/;
             const anchorParts = paragraph.match(anchorRegex);
             if (anchorParts && anchorParts[1] !== undefined) {
                 return {
-                    reference: anchorParts[1],
-                    data: {
-                        link: anchorParts[2] !== undefined ? anchorParts[2] : '',
-                        title: anchorParts[5] !== undefined ? anchorParts[5] : '',
+                    str: paragraph,
+                    reference: {
+                        name: anchorParts[1],
+                        data: {
+                            link: anchorParts[2] !== undefined ? anchorParts[2] : '',
+                            title: anchorParts[5] !== undefined ? anchorParts[5] : '',
+                        },
                     },
                 };
             }
         }
-        return '<p>' + paragraph + '</p>';
+        return { str: '<p>' + paragraph + '</p>' };
     }
     fixReferences(elements, reference) {
-        elements.map((element) => element.querySelectorAll(`[data-reference="${reference.reference}"]`))
+        elements.map((element) => element.querySelectorAll(`[data-reference="${reference.name}"]`))
             .map((nodes) => {
             for (const node of nodes) {
                 node.setAttribute('title', reference.data.title);
@@ -227,18 +252,25 @@ class Compiler {
         return paragraphs;
     }
 }
-class CssHelper {
+class CssInjector {
     constructor() {
-        CssHelper.styleElement = document.createElement('style');
-        CssHelper.styleElement.type = 'text/css';
+        CssInjector.styleElement = document.createElement('style');
+        CssInjector.styleElement.type = 'text/css';
         document
             .getElementsByTagName('head')[0]
-            .appendChild(CssHelper.styleElement);
+            .appendChild(CssInjector.styleElement);
     }
     static injectCss(identifier, properties) {
-        const cssTextPropertoes = CssHelper.stringifyCSSProperties(properties);
-        CssHelper.styleElement.innerHTML +=
-            `${identifier} { ${cssTextPropertoes} } \n`;
+        if (properties === this.cssRules[identifier]) {
+            return;
+        }
+        this.cssRules[identifier] = properties;
+        let css = '';
+        Object.keys(this.cssRules).map((key) => {
+            const cssTextPropertoes = CssInjector.stringifyCSSProperties(this.cssRules[key]);
+            css += `${key} { ${cssTextPropertoes} } \n`;
+        });
+        this.styleElement.innerHTML = css;
     }
     static stringifyCSSProperties(property) {
         let cssString = '';
@@ -250,21 +282,11 @@ class CssHelper {
         return cssString;
     }
 }
-CssHelper.instance = new CssHelper();
+CssInjector.cssRules = {};
+CssInjector.instance = new CssInjector();
 class CssRules {
     constructor() {
         this.rules = {};
-    }
-}
-class DOMHelper {
-    static htmlElementFromString(html) {
-        const creationHelperElement = document.createElement('div');
-        creationHelperElement.innerHTML = html.trim();
-        if (creationHelperElement.firstChild &&
-            creationHelperElement.firstChild.nodeType === Node.ELEMENT_NODE) {
-            return creationHelperElement.firstChild;
-        }
-        throw new Error('Failed to create element from html: ' + html);
     }
 }
 
@@ -290,7 +312,7 @@ class Editor {
     injectAdditionalCssRules() {
         if (this.theme.additionalCssRules) {
             Object.entries(this.theme.additionalCssRules.rules).forEach(([identifier, properties]) => {
-                CssHelper.injectCss(identifier, properties);
+                CssInjector.injectCss(identifier, properties);
             });
         }
     }
@@ -298,7 +320,7 @@ class Editor {
         if (this.theme.scrollbarTheme) {
             Object.entries(this.theme.scrollbarTheme).forEach(([identifier, properties]) => {
                 const cssIdentifier = '#' + this.getEditorId() + '::' + identifier;
-                CssHelper.injectCss(cssIdentifier, properties);
+                CssInjector.injectCss(cssIdentifier, properties);
             });
         }
     }
@@ -325,7 +347,7 @@ class Editor {
     createMenuBase() {
         this.container.appendChild(this.menu);
         this.menu.id = this.getMenuId();
-        const settingsSvg = DOMHelper.htmlElementFromString(`
+        const settingsSvg = htmlElementFromString(`
         <div style='display: flex; justify-content: flex-end;'>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2"
@@ -392,14 +414,14 @@ class Editor {
         this.injectAdditionalCssRules();
     }
     injectEditorCss() {
-        CssHelper.injectCss(this.getEditorIdentifier(), this.getEditorBaseCssProperties());
+        CssInjector.injectCss(this.getEditorIdentifier(), this.getEditorBaseCssProperties());
     }
     injectMenuCss() {
-        CssHelper.injectCss(this.getMenuIdentifier(), this.getMenuBaseCssProperties());
+        CssInjector.injectCss(this.getMenuIdentifier(), this.getMenuBaseCssProperties());
     }
     injectContainerTheme() {
         const containerCss = this.getContainerCssProperties();
-        CssHelper.injectCss(this.getContainerIdentifier(), containerCss);
+        CssInjector.injectCss(this.getContainerIdentifier(), containerCss);
     }
     getContainerCssProperties() {
         if (this.theme.editorTheme) {
@@ -459,6 +481,15 @@ class Editor {
 }
 class Formatter {
 }
+function htmlElementFromString(html) {
+    const creationHelperElement = document.createElement('div');
+    creationHelperElement.innerHTML = html.trim();
+    if (creationHelperElement.firstChild &&
+        creationHelperElement.firstChild.nodeType === Node.ELEMENT_NODE) {
+        return creationHelperElement.firstChild;
+    }
+    throw new Error('Failed to create element from html: ' + html);
+}
 var SpecialKey;
 (function (SpecialKey) {
     SpecialKey[SpecialKey["esc"] = 27] = "esc";
@@ -495,55 +526,59 @@ var SpecialKey;
     SpecialKey[SpecialKey["f12"] = 123] = "f12";
 })(SpecialKey || (SpecialKey = {}));
 
-
 var MdCss;
 (function (MdCss) {
-    MdCss["header1"] = ".md-header-1";
-    MdCss["header2"] = ".md-header-2";
-    MdCss["header3"] = ".md-header-3";
-    MdCss["header4"] = ".md-header-4";
-    MdCss["header5"] = ".md-header-5";
-    MdCss["header6"] = ".md-header-6";
-    MdCss["italics"] = ".md-italics";
-    MdCss["bold"] = ".md-bold";
-    MdCss["strikethrough"] = ".md-strikethrough";
-    MdCss["orderedList"] = ".md-ordered-list";
-    MdCss["unorderedList"] = ".md-unordered-list";
-    MdCss["link"] = ".md-link";
-    MdCss["image"] = ".md-image";
-    MdCss["inlineCode"] = ".md-inline-code";
-    MdCss["blockCode"] = ".md-block-code";
-    MdCss["tableHeader"] = ".md-table-header";
-    MdCss["tableCell"] = ".md-table-cell";
-    MdCss["quote"] = ".md-quote";
-    MdCss["horizontalLine"] = ".md-horizontal-line";
+    MdCss["global"] = "*.md";
+    MdCss["paragraph"] = "p.md";
+    MdCss["header1"] = "h1.md";
+    MdCss["header2"] = "h2.md";
+    MdCss["header3"] = "h3.md";
+    MdCss["header4"] = "h4.md";
+    MdCss["header5"] = "h5.md";
+    MdCss["header6"] = "h6.md";
+    MdCss["italics"] = "em.md";
+    MdCss["bold"] = "strong.md";
+    MdCss["strikethrough"] = "strike.md";
+    MdCss["orderedList"] = "ol.md";
+    MdCss["unorderedList"] = "ul.md";
+    MdCss["link"] = "a.md";
+    MdCss["image"] = "img.md";
+    MdCss["inlineCode"] = "code.md";
+    MdCss["blockCode"] = "pre.md";
+    MdCss["tableHeader"] = "th.md";
+    MdCss["tableCell"] = "td.md";
+    MdCss["quote"] = "blockquote.md";
+    MdCss["horizontalLine"] = "hr.md";
 })(MdCss || (MdCss = {}));
 class MdCssRules extends CssRules {
     constructor() {
         super(...arguments);
         this.rules = {
-            '.md-header-1': {},
-            '.md-header-2': {},
-            '.md-header-3': {},
-            '.md-header-4': {},
-            '.md-header-5': {},
-            '.md-header-6': {},
-            '.md-italics': {},
-            '.md-bold': {},
-            '.md-strikethrough': {},
-            '.md-ordered-list': {},
-            '.md-unordered-list': {},
-            '.md-link': {},
-            '.md-image': {},
-            '.md-inline-code': {},
-            '.md-block-code': {},
-            '.md-table-header': {},
-            '.md-table-cell': {},
-            '.md-quote': {},
-            '.md-horizontal-line': {},
+            '*.md': {},
+            'p.md': {},
+            'h1.md': {},
+            'h2.md': {},
+            'h3.md': {},
+            'h4.md': {},
+            'h5.md': {},
+            'h6.md': {},
+            'em.md': {},
+            'strong.md': {},
+            'strike.md': {},
+            'ol.md': {},
+            'ul.md': {},
+            'a.md': {},
+            'img.md': {},
+            'code.md': {},
+            'pre.md': {},
+            'th.md': {},
+            'td.md': {},
+            'blockquote.md': {},
+            'hr.md': {},
         };
     }
 }
+
 
 
 
@@ -553,7 +588,7 @@ class MdFormatter extends Formatter {
         this.editor = document.createElement('invalid');
         this.settings = {
             dynamicRender: true,
-            showSyntax: true,
+            showSyntax: false,
         };
         this.documentData = {
             currentParagraph: null,
@@ -566,17 +601,30 @@ class MdFormatter extends Formatter {
         this.initMutationListeners();
         this.initKeyboardEventListeners();
         this.initMouseEventListeners();
+        CssInjector.injectCss('.md-token', {
+            display: 'none',
+        });
     }
     setContent(content) {
         const { html, references } = this.compiler.compileText(content, {});
         this.editor.innerHTML = '';
-        for (const div of html) {
-            this.editor.appendChild(div);
+        for (const element of html) {
+            this.editor.appendChild(element);
         }
         this.documentData.references = references;
     }
     getContent() {
-        const content = '';
+        let content = '';
+        for (const paragraph of this.editor.childNodes) {
+            const element = paragraph;
+            if (element.hasAttribute('data-text')) {
+                content += element.getAttribute('data-text');
+            }
+            else {
+                content += element.innerText;
+            }
+            content += '\n\n';
+        }
         return content;
     }
     initMutationListeners() {
@@ -612,31 +660,99 @@ class MdFormatter extends Formatter {
             return null;
         }
     }
+    compileCurrentParagraph() {
+        if (this.documentData.currentParagraph) {
+            this.documentData.currentParagraph.setAttribute('data-text', this.documentData.currentParagraph.innerText);
+            const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
+            this.documentData.currentParagraph.parentElement?.replaceChild(compiled.html, this.documentData.currentParagraph);
+            this.documentData.currentParagraph = compiled.html;
+            if (compiled.reference) {
+                this.documentData.references[compiled.reference.name] = compiled.reference.data;
+                this.compiler.fixReferences([this.editor], compiled.reference);
+            }
+        }
+    }
+    decompileCurrentParagraph(caretPosition) {
+        if (this.documentData.currentParagraph) {
+            const text = this.documentData.currentParagraph.getAttribute('data-text');
+            this.documentData.currentParagraph.removeAttribute('data-text');
+            if (text) {
+                this.documentData.currentParagraph.innerText = text;
+            }
+            this.setCaretCharacterOffsetWithin(this.documentData.currentParagraph, caretPosition);
+        }
+    }
     caretMoved() {
         const newCurrentParagraph = this.getCaretDiv();
         if (this.documentData.currentParagraph !== newCurrentParagraph) {
-            if (this.documentData.currentParagraph) {
-                this.documentData.currentParagraph.setAttribute('data-active', 'false');
-                this.documentData.currentParagraph.setAttribute('data-text', this.documentData.currentParagraph.innerText);
-                const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
-                if (compiled instanceof HTMLElement) {
-                    this.documentData.currentParagraph.innerHTML = '';
-                    this.documentData.currentParagraph.appendChild(compiled);
+            let caretPosition = 0;
+            if (newCurrentParagraph) {
+                caretPosition = this.getCaretCharacterOffsetWithin(newCurrentParagraph);
+            }
+            if (this.settings.dynamicRender) {
+                this.compileCurrentParagraph();
+                this.documentData.currentParagraph = newCurrentParagraph;
+                this.decompileCurrentParagraph(caretPosition);
+            }
+            else {
+                this.documentData.currentParagraph = newCurrentParagraph;
+            }
+        }
+    }
+    getCaretCharacterOffsetWithin(element) {
+        if (!element) {
+            return -1;
+        }
+        let caretOffset = 0;
+        const win = window;
+        const sel = win.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            const preCaretRange = range.cloneRange();
+            preCaretRange.selectNodeContents(element);
+            preCaretRange.setEnd(range.endContainer, range.endOffset);
+            caretOffset = preCaretRange.toString().length;
+        }
+        return caretOffset;
+    }
+    setCaretCharacterOffsetWithin(element, offset) {
+        const createRange = (node, offset, range) => {
+            if (!range) {
+                range = document.createRange();
+                range.selectNode(node);
+                range.setStart(node, 0);
+            }
+            if (offset === 0) {
+                range.setEnd(node, offset);
+            }
+            else if (node && offset > 0) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    if (node.textContent && node.textContent.length < offset) {
+                        offset -= node.textContent.length;
+                    }
+                    else {
+                        range.setEnd(node, offset);
+                        offset = 0;
+                    }
                 }
                 else {
-                    const reference = compiled;
-                    console.log(reference);
-                    this.documentData.references[reference.reference] = reference.data;
-                    this.compiler.fixReferences([this.editor], reference);
+                    for (let lp = 0; lp < node.childNodes.length; lp++) {
+                        range = createRange(node.childNodes[lp], offset, range);
+                        if (offset === 0) {
+                            break;
+                        }
+                    }
                 }
             }
-            this.documentData.currentParagraph = newCurrentParagraph;
-            if (this.documentData.currentParagraph) {
-                this.documentData.currentParagraph.setAttribute('data-active', 'true');
-                const text = this.documentData.currentParagraph.getAttribute('data-text');
-                if (text) {
-                    this.documentData.currentParagraph.innerText = text;
-                }
+            return range;
+        };
+        if (offset >= 0) {
+            const selection = window.getSelection();
+            const range = createRange(element, offset, null);
+            if (range && selection) {
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
             }
         }
     }
@@ -692,7 +808,7 @@ class MdFormatter extends Formatter {
       </div>
       `,
         ];
-        const settingsElements = settingsHtml.map((setting) => DOMHelper.htmlElementFromString(setting));
+        const settingsElements = settingsHtml.map((setting) => htmlElementFromString(setting));
         settingsElements.forEach((element) => {
             if (element.hasAttribute('data-setting')) {
                 if (element.getAttribute('data-setting') === 'dynamic-render') {
@@ -718,10 +834,28 @@ class MdFormatter extends Formatter {
         }
         this.settings.dynamicRender = !this.settings.dynamicRender;
         if (this.settings.dynamicRender) {
-            this.enableRendering();
+            this.setContent(this.getContent());
         }
         else {
-            this.disableRendering();
+            const newParagraphs = [];
+            for (const paragraph of this.editor.childNodes) {
+                const element = paragraph;
+                const p = document.createElement('p');
+                if (element.hasAttribute('data-text')) {
+                    const text = element.getAttribute('data-text');
+                    if (text) {
+                        p.innerText = text;
+                    }
+                }
+                else {
+                    p.innerText = element.innerText;
+                }
+                newParagraphs.push(p);
+            }
+            this.editor.innerHTML = '';
+            for (const element of newParagraphs) {
+                this.editor.appendChild(element);
+            }
         }
     }
     toggleHideSyntax(event) {
@@ -737,17 +871,15 @@ class MdFormatter extends Formatter {
         }
         this.settings.showSyntax = !this.settings.showSyntax;
         if (this.settings.showSyntax) {
-            this.enableHideSyntax();
+            CssInjector.injectCss('.md-token', {
+                display: '',
+            });
         }
         else {
-            this.disableHideSyntax();
+            CssInjector.injectCss('.md-token', {
+                display: 'none',
+            });
         }
-    }
-    enableHideSyntax() {
-        this.settings.showSyntax = true;
-    }
-    disableHideSyntax() {
-        this.settings.showSyntax = false;
     }
     handleMutations(mutations) {
         mutations.map((mutation) => {
@@ -755,7 +887,6 @@ class MdFormatter extends Formatter {
                 this.handleChildListMutation(mutation);
             }
             else if (mutation.type === 'characterData') {
-                this.handleCharacterDataMutation(mutation);
             }
         });
     }
@@ -769,6 +900,7 @@ class MdFormatter extends Formatter {
             const newDiv = document.createElement('div');
             this.editor.insertBefore(newDiv, addedNode.nextSibling);
             newDiv.appendChild(addedNode);
+            this.documentData.currentParagraph = newDiv;
             const range = document.createRange();
             const sel = window.getSelection();
             range.setStart(this.editor.childNodes[0], newDiv.innerText.length);
@@ -778,19 +910,26 @@ class MdFormatter extends Formatter {
                 sel.addRange(range);
             }
         }
-    }
-    handleCharacterDataMutation(mutation) {
-        const element = mutation.target.parentElement;
-    }
-    disableRendering() {
-        this.settings.dynamicRender = false;
-    }
-    enableRendering() {
-        this.settings.dynamicRender = true;
+        else if (addedNode.nodeName === '#text') {
+            if (addedNode.nodeValue) {
+                const currentText = mutation.target.getAttribute('data-text');
+                if (currentText) {
+                    mutation.target.setAttribute('data-text', currentText + addedNode.nodeValue);
+                }
+            }
+        }
     }
 }
 
+
+
 const darkMDFormatterTheme = new MdCssRules();
+darkMDFormatterTheme.rules[MdCss.global] = {
+    'font-family': 'sans-serif',
+};
+darkMDFormatterTheme.rules[MdCss.paragraph] = {
+    'font-size': '1em',
+};
 darkMDFormatterTheme.rules[MdCss.header1] = {
     'margin': '24px 0 16px 0',
     'font-weight': 'bold',
@@ -920,8 +1059,115 @@ const darkEditorTheme = {
     'height': '50%',
     'box-shadow': '0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19)',
 };
+const sampleMarkdownText = `
+# Title 1
+## Title 2
+### Title 3
+#### Title 4
+##### Title 5
+###### Title 6
+Paragraph under a title.
+
+Paragraph separated by a new line.
+Which spans multiple lines.
+To remind us that a parahraph is separated from other paragraphs by an empty line.
+
+> quote
+[anchor]: https://google.com
+
+Text above line.
+---
+Text between lines.
+****
+## Title 2 between lines
+_____
+Text under the last line.
+
+Paragraph with **bold text** and __more bold text__
+
+And this is some *italics with asterisk* and _italics with underscores_
+
+How about combined ***italics* and bold** or **_italics_ and bold using _underscores_**
+
+Then some ~~strikethrough text~~
+
+Here's how \`inline code\` looks like.
+
+[I'm an inline-style link](https://www.google.com)
+
+[I'm an inline-style link with title](https://www.google.com "Google's Homepage")
+
+Links can also be inline: [I'm a reference-style link][anchor]
+
+Or leave it empty and use the [anchor with text].
+
+[anchor with text]: https://youtube.com "YouTube"
+
+Inline-style image: ![alt text](https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Logo Title Text 1")
+
+Reference-style image:
+![alt text][logo]
+
+[logo]: https://github.com/adam-p/markdown-here/raw/master/src/common/images/icon48.png "Logo Title Text 2"
+
+### Here's multiline code block with specified language
+\`\`\`javascript
+    var s = "JavaScript syntax highlighting";
+    alert( s );
+\`\`\`
+
+### Here's multiline code block without language specification
+
+\`\`\`
+    No language indicated, so no syntax highlighting.
+    But let's throw in a <b>tag</b>.
+\`\`\`
+
+Next is an unordered list
+* Unordered list can use asterisks
+- Or minuses
++ Or pluses
+
+And unordered list with sub lists
+* Unordered list with
+ - subitem
+ + and another subitem
+* and we can continue the original list
+
+Next we have ordered lists
+1. First item
+2. Second item (number doesn't matter)
+1. Last ordered item
+
+And mixed lists
+23. Ordered list
+ - unordered sublist item 1
+ - unordered sublist item 2
+12. and then continue the ordered list
+ 1. with an ordered sublist
+
+At the end there's tables
+
+| Tables        | Are           | Cool  |
+| ------------- |:-------------:| -----:|
+| col 3 is      | right-aligned | $1600 |
+| col 2 is      | centered      |   $12 |
+| zebra stripes | are neat      |    $1 |
+
+And tables with wonky syntax
+Markdown | Less | Pretty
+--- | --- | ---
+*Still* | \`renders\` | **nicely**
+1 | 2 | 3
+
+And | tables
+without | headers
+
+        `;
 const customTheme = {
     scrollbarTheme: darkScrollbar,
     additionalCssRules: darkMDFormatterTheme,
     editorTheme: darkEditorTheme,
 };
+const editor = new Editor('editor', new MdFormatter(), customTheme);
+editor.setContent(sampleMarkdownText);

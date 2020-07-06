@@ -1,4 +1,4 @@
-import {DOMHelper} from './DOMHelper';
+import {htmlElementFromString} from './HtmlGeneration';
 
 interface HtmlTag {openTag: string; closeTag: string}
 
@@ -8,9 +8,9 @@ export interface ReferenceData {
 }
 
 export interface Reference {
-  reference: string;
-   data: ReferenceData;
-  }
+  name: string;
+  data: ReferenceData;
+}
 
 export interface ReferenceDictionary {
   [reference: string]: ReferenceData;
@@ -23,22 +23,19 @@ export interface ReferenceDictionary {
 export class Compiler {
   /** Compile markdown document to html
    * @param {string} text is a markdown document
-   * @param {ReferenceDictionary} references
+   * @param {ReferenceDictionary} startingReferences
    * @return {string} compiled html
    */
-  compileText(text: string, references: ReferenceDictionary):
-      {html: HTMLElement[]; references: ReferenceDictionary} {
-    const newReferences = references;
+  compileText(text: string, startingReferences: ReferenceDictionary): {html: HTMLElement[]; references: ReferenceDictionary} {
+    const newReferences = startingReferences;
     const paragraphs = this.splitStringToParagraphs(text);
     const compiledElements: HTMLElement[] = [];
     for (const paragraph of paragraphs) {
-      const element = this.compileParagraph(paragraph, newReferences);
-      if (element instanceof HTMLElement) {
-        compiledElements.push(element);
-      } else {
-        const reference = element;
-        newReferences[reference.reference] = reference.data;
-        this.fixReferences(compiledElements, reference);
+      const compiled = this.compileParagraph(paragraph, newReferences);
+      compiledElements.push(compiled.html);
+      if (compiled.reference) {
+        newReferences[compiled.reference.name] = compiled.reference.data;
+        this.fixReferences(compiledElements, compiled.reference);
       }
     }
     return {
@@ -52,20 +49,29 @@ export class Compiler {
    * @param {ReferenceDictionary} references
    * @return {string} compiled html
    */
-  compileParagraph(paragraph: string, references: ReferenceDictionary): HTMLElement | Reference {
-    let compiled = this.compilePrefix(paragraph);
-    if (typeof compiled !== 'string') {
-      return compiled;
+  compileParagraph(paragraph: string, references: ReferenceDictionary): {html: HTMLElement; reference?: Reference} {
+    const compiled = this.compilePrefix(paragraph);
+    if (compiled.reference) {
+      return {
+        html: htmlElementFromString('<p>' + compiled.str + '<p>'),
+        reference: compiled.reference,
+      };
     } else {
-      const inlineTokens = this.tokenizeParagraphForInfixCompilation(compiled);
-      compiled = this.compileInfixTokens(inlineTokens);
-      compiled = this.compileImage(compiled, references);
-      compiled = this.compileLink(compiled, references);
-      const div = document.createElement('div');
-      div.appendChild(DOMHelper.htmlElementFromString(compiled));
-      div.setAttribute('data-text', paragraph);
-      return div;
+      const inlineTokens = this.tokenizeParagraphForInfixCompilation(compiled.str);
+      compiled.str = this.compileInfixTokens(inlineTokens);
+      compiled.str = this.compileImage(compiled.str, references);
+      compiled.str = this.compileLink(compiled.str, references);
+      const element = htmlElementFromString(compiled.str);
+      element.setAttribute('data-text', paragraph);
+      element.classList.add('md');
+      return {html: element};
     }
+  }
+
+  // Tags to surround markdown format tokens with
+  private tokenHtmlTag: HtmlTag = {
+    openTag: '<span class="md-token">',
+    closeTag: '</span>',
   }
 
   // Dictionary of infix formatters and their html tags
@@ -87,6 +93,10 @@ export class Compiler {
     {regex: new RegExp('^##### '), openTag: '<h5>', closeTag: '</h5>'},
     {regex: new RegExp('^###### '), openTag: '<h6>', closeTag: '</h6>'},
     {regex: new RegExp('^> '), openTag: '<blockquote>', closeTag: '</blockquote>'},
+    {regex: new RegExp('^- '), openTag: '<li>', closeTag: '</li>'},
+    {regex: new RegExp('^\\* '), openTag: '<li>', closeTag: '</li>'},
+    {regex: new RegExp('^\\+ '), openTag: '<li>', closeTag: '</li>'},
+    {regex: new RegExp('^[0-9]+\\. '), openTag: '<li style="list-style:decimal">', closeTag: '</li>'},
   ];
 
   /** Parse images
@@ -172,6 +182,11 @@ export class Compiler {
       }
     };
 
+    if (/^<li>\* /.test(paragraph)) {
+      paragraph = paragraph.substr(6);
+      tokens.push('<li>* ');
+    }
+
     for (const char of paragraph) {
       if (tokens.length === 0) {
         tokens.push(char);
@@ -205,10 +220,13 @@ export class Compiler {
       if (this.infixFormatters[token] !== undefined) {
         if (!formatTokenSet.has(token)) {
           formatTokenSet.add(token);
-          compiled = compiled + this.infixFormatters[token].openTag + token;
+          compiled = compiled +
+            this.infixFormatters[token].openTag + this.tokenHtmlTag.openTag + token +
+            this.tokenHtmlTag.closeTag;
         } else {
           formatTokenSet.delete(token);
-          compiled = compiled + token + this.infixFormatters[token].closeTag;
+          compiled = compiled + this.tokenHtmlTag.openTag + token + this.tokenHtmlTag.closeTag +
+            this.infixFormatters[token].closeTag;
         }
       } else {
         compiled = compiled + token;
@@ -222,15 +240,22 @@ export class Compiler {
    * @param {string} paragraph
    * @return {string} compiled html with prefix formatters
    */
-  private compilePrefix(paragraph: string): string | Reference {
+  private compilePrefix(paragraph: string): {str: string; reference?: Reference} {
     for (const prefix of this.prefixFormatters) {
       if (prefix.regex.test(paragraph)) {
-        return prefix.openTag + paragraph + prefix.closeTag;
+        const prefixMatch = paragraph.match(prefix.regex);
+        if (prefixMatch) {
+          const prefixString = prefixMatch[0];
+          const paragraphWithoutPrefixFormatter = paragraph.substr(prefixString.length);
+          const paragraphContent = this.tokenHtmlTag.openTag + prefixString + this.tokenHtmlTag.closeTag +
+            paragraphWithoutPrefixFormatter;
+          return {str: prefix.openTag + paragraphContent + prefix.closeTag};
+        }
       }
     }
 
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(paragraph)) {
-      return '<hr/>';
+      return {str: '<hr/>'};
     }
 
     if (/^\[.*?\]:/.test(paragraph)) {
@@ -238,16 +263,19 @@ export class Compiler {
       const anchorParts = paragraph.match(anchorRegex);
       if (anchorParts && anchorParts[1] !== undefined) {
         return {
-          reference: anchorParts[1],
-          data: {
-            link: anchorParts[2] !== undefined ? anchorParts[2] : '',
-            title: anchorParts[5] !== undefined ? anchorParts[5] : '',
+          str: paragraph,
+          reference: {
+            name: anchorParts[1],
+            data: {
+              link: anchorParts[2] !== undefined ? anchorParts[2] : '',
+              title: anchorParts[5] !== undefined ? anchorParts[5] : '',
+            },
           },
         };
       }
     }
 
-    return '<p>' + paragraph + '</p>';
+    return {str: '<p>' + paragraph + '</p>'};
   }
 
   /**
@@ -256,7 +284,7 @@ export class Compiler {
    * @param {ReferenceDictionary} references
    */
   public fixReferences(elements: HTMLElement[], reference: Reference): void {
-    elements.map((element) => element.querySelectorAll(`[data-reference="${reference.reference}"]`))
+    elements.map((element) => element.querySelectorAll(`[data-reference="${reference.name}"]`))
         .map((nodes) => {
           for (const node of nodes) {
             node.setAttribute('title', reference.data.title);

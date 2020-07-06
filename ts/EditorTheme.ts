@@ -4,6 +4,7 @@ import {
   WidthProperty,
   HeightProperty,
   BoxShadowProperty,
+  FontProperty,
 } from 'csstype';
 
 /**
@@ -15,4 +16,5 @@ export interface EditorTheme {
   width?: WidthProperty<string>;
   height?: HeightProperty<string>;
   'box-shadow'?: BoxShadowProperty;
+  'font'?: FontProperty;
 }

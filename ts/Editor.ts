@@ -1,8 +1,8 @@
 import {Theme} from './Theme';
 import {PropertiesHyphen} from 'csstype';
-import {CssHelper} from './CssHelper';
+import {CssInjector} from './CssInjector';
 import {Formatter} from './Formatter';
-import {DOMHelper} from './DOMHelper';
+import {htmlElementFromString} from './HtmlGeneration';
 
 /**
  * Abstraction of the editor as a collection of
@@ -62,28 +62,26 @@ export class Editor {
     if (this.theme.additionalCssRules) {
       Object.entries(this.theme.additionalCssRules.rules).forEach(
           ([identifier, properties]) => {
-            CssHelper.injectCss(identifier, properties);
+            CssInjector.injectCss(identifier, properties);
           },
       );
     }
   }
 
-  /**
-   * Inject the scrollbar classes into the HTML
+  /** Inject the scrollbar classes into the HTML
    */
   private injectScrollbarTheme(): void {
     if (this.theme.scrollbarTheme) {
       Object.entries(this.theme.scrollbarTheme).forEach(
           ([identifier, properties]) => {
             const cssIdentifier = '#' + this.getEditorId() + '::' + identifier;
-            CssHelper.injectCss(cssIdentifier, properties);
+            CssInjector.injectCss(cssIdentifier, properties);
           },
       );
     }
   }
 
-  /**
-   * Initialize the container Id
+  /** Initialize the container Id
    */
   private createContainerId(): void {
     this.container.id = this.idPrefix;
@@ -129,7 +127,7 @@ export class Editor {
     this.menu.id = this.getMenuId();
 
     // Add settings button
-    const settingsSvg = DOMHelper.htmlElementFromString(`
+    const settingsSvg = htmlElementFromString(`
         <div style='display: flex; justify-content: flex-end;'>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2"
@@ -144,7 +142,7 @@ export class Editor {
         </div>`);
 
     this.menu.appendChild(settingsSvg);
-    settingsSvg.addEventListener('click', (event) => {
+    settingsSvg.addEventListener('click', (event: MouseEvent) => {
       this.settingsClick(event, this.menu);
     });
   }
@@ -226,7 +224,7 @@ export class Editor {
    * Inject editor Css class into the HTML
    */
   private injectEditorCss(): void {
-    CssHelper.injectCss(
+    CssInjector.injectCss(
         this.getEditorIdentifier(),
         this.getEditorBaseCssProperties(),
     );
@@ -236,7 +234,7 @@ export class Editor {
    * Inject menu CSS class into the HTML
    */
   private injectMenuCss(): void {
-    CssHelper.injectCss(
+    CssInjector.injectCss(
         this.getMenuIdentifier(),
         this.getMenuBaseCssProperties(),
     );
@@ -247,7 +245,7 @@ export class Editor {
    */
   private injectContainerTheme(): void {
     const containerCss = this.getContainerCssProperties();
-    CssHelper.injectCss(this.getContainerIdentifier(), containerCss);
+    CssInjector.injectCss(this.getContainerIdentifier(), containerCss);
   }
 
   /**
