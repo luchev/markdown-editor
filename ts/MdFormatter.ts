@@ -3,6 +3,7 @@ import {htmlElementFromString} from './HtmlGeneration';
 import {Compiler} from './Compiler';
 import {ReferenceDictionary} from './Compiler';
 import {CssInjector} from './CssInjector';
+import * as Prism from 'prismjs';
 
 interface Settings {
   dynamicRender: boolean;
@@ -156,9 +157,13 @@ export class MdFormatter extends Formatter {
       const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
       this.documentData.currentParagraph.parentElement?.replaceChild(compiled.html, this.documentData.currentParagraph);
       this.documentData.currentParagraph = compiled.html;
+      Prism.highlightAll();
       if (compiled.reference) {
         this.documentData.references[compiled.reference.name] = compiled.reference.data;
         this.compiler.fixReferences([this.editor], compiled.reference);
+      }
+      if (compiled.html.tagName === 'TABLE') {
+        this.compiler.fixTable(compiled.html, compiled.html.previousSibling, compiled.html.nextSibling);
       }
     }
   }

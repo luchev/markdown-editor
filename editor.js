@@ -33,10 +33,16 @@ class Compiler {
         const compiledElements = [];
         for (const paragraph of paragraphs) {
             const compiled = this.compileParagraph(paragraph, newReferences);
-            compiledElements.push(compiled.html);
             if (compiled.reference) {
                 newReferences[compiled.reference.name] = compiled.reference.data;
                 this.fixReferences(compiledElements, compiled.reference);
+            }
+            if (compiled.html.tagName === 'TABLE' && compiledElements.length > 1 &&
+                compiledElements[compiledElements.length - 1].tagName === 'TABLE') {
+                this.fixTable(compiled.html, compiledElements[compiledElements.length - 1]);
+            }
+            else {
+                compiledElements.push(compiled.html);
             }
         }
         return {
@@ -64,7 +70,7 @@ class Compiler {
         }
     }
     compileImage(paragraph, references) {
-        const imageRegex = /!\[(.*?)\]\((.*?) ("(.*?)")\)?/g;
+        const imageRegex = /!\[(.*?)\]\((.*?)( "(.*)")?\)/g;
         for (const match of paragraph.matchAll(imageRegex)) {
             const alt = match[1] !== undefined ? match[1] : '';
             const link = match[2] !== undefined ? match[2] : '';
@@ -78,8 +84,6 @@ class Compiler {
             const ref = match[3] !== undefined ? match[3] : '';
             let link = '';
             let title = '';
-            console.log(match);
-            console.log(link.replace(/<.*?>/, ''));
             if (references[ref] !== undefined) {
                 link = references[ref].link !== undefined ? references[ref].link : '';
                 title = references[ref].title !== undefined ? references[ref].title : '';
@@ -98,7 +102,7 @@ class Compiler {
             let title = match[5] !== undefined ? match[5] : '';
             let ref = match[6] !== undefined ? match[6] : '';
             if (match[2] && match[2].startsWith('(')) {
-                htmlTag = `<a href="${link}" title="${title}">${name}</a>`;
+                htmlTag = `<a href="${link}" title="${title}" class="md">${name}</a>`;
             }
             else {
                 if (match[2] === undefined) {
@@ -108,10 +112,22 @@ class Compiler {
                     link = references[ref].link !== undefined ? references[ref].link : '';
                     title = references[ref].title !== undefined ? references[ref].title : '';
                 }
-                htmlTag = `<a href="${link}" title="${title}" data-reference="${ref}">${name}</a>`;
+                htmlTag = `<a href="${link}" title="${title}" data-reference="${ref}" class="md">${name}</a>`;
             }
             paragraph = paragraph.replace(match[0], htmlTag);
         }
+        return paragraph;
+    }
+    compileTable(paragraph) {
+        paragraph = paragraph.trim();
+        if (paragraph[0] === '|') {
+            paragraph = paragraph.substr(1);
+        }
+        if (paragraph[paragraph.length - 1] === '|') {
+            paragraph = paragraph.substr(0, paragraph.length - 2);
+        }
+        paragraph = '<table class="md"><tr><td class="md" >' + paragraph + '</td></tr></table>';
+        paragraph = paragraph.replace(/\|/g, '</td><td class="md">');
         return paragraph;
     }
     tokenizeParagraphForInfixCompilation(paragraph) {
@@ -189,6 +205,21 @@ class Compiler {
                 }
             }
         }
+        if (paragraph.startsWith('```')) {
+            paragraph = paragraph.replace('```', '');
+            paragraph = paragraph.replace('```', '');
+            const languageMatch = paragraph.match(/^(.*)\n/);
+            let language = 'js';
+            if (languageMatch && languageMatch[1]) {
+                language = languageMatch[1];
+            }
+            paragraph = paragraph.replace(/.*\n/, '');
+            return { str: `<pre><code class="language-${language}">` + paragraph + '</code></pre>',
+            };
+        }
+        if (paragraph.includes('|')) {
+            return { str: this.compileTable(paragraph) };
+        }
         if (/^(-{3,}|\*{3,}|_{3,})$/.test(paragraph)) {
             return { str: '<hr/>' };
         }
@@ -224,6 +255,30 @@ class Compiler {
             }
         });
     }
+    fixTable(currentElement, prevSibling, nextSibling) {
+        if (currentElement.tagName !== 'TABLE') {
+            return;
+        }
+        if (prevSibling && prevSibling.nodeName === 'TABLE') {
+            for (const row of currentElement.childNodes) {
+                const trElement = row;
+                prevSibling.appendChild(trElement);
+            }
+            if (currentElement.parentElement) {
+                currentElement.parentElement.removeChild(currentElement);
+            }
+            currentElement = prevSibling;
+        }
+        if (nextSibling && nextSibling.nodeName === 'TABLE') {
+            for (const row of nextSibling.childNodes) {
+                const trElement = row;
+                currentElement.appendChild(trElement);
+            }
+            if (nextSibling.parentElement) {
+                nextSibling.parentElement.removeChild(nextSibling);
+            }
+        }
+    }
     splitStringToParagraphs(text) {
         const lines = text.split('\n');
         const paragraphs = [];
@@ -237,7 +292,24 @@ class Compiler {
         const specialParagraphStart = /^(#{1,6} |\d+\. |\* |\+ |- |> )/;
         const horizontalLine = /^(-{3,}|\*{3,}|_{3,})$/;
         const anchor = /^\[.+\]:/;
+        const code = /^```/;
+        let insideCodeBlock = false;
         for (const line of lines) {
+            if (code.test(line)) {
+                paragraphBuffer += line;
+                if (insideCodeBlock) {
+                    appendBuffer();
+                }
+                else {
+                    paragraphBuffer += '\n';
+                }
+                insideCodeBlock = !insideCodeBlock;
+                continue;
+            }
+            if (insideCodeBlock) {
+                paragraphBuffer += line + '\n';
+                continue;
+            }
             if (specialParagraphStart.test(line) || horizontalLine.test(line) ||
                 anchor.test(line) || line.includes('|')) {
                 appendBuffer();
@@ -547,6 +619,7 @@ var MdCss;
     MdCss["image"] = "img.md";
     MdCss["inlineCode"] = "code.md";
     MdCss["blockCode"] = "pre.md";
+    MdCss["table"] = "table.md";
     MdCss["tableHeader"] = "th.md";
     MdCss["tableCell"] = "td.md";
     MdCss["quote"] = "blockquote.md";
@@ -573,6 +646,7 @@ class MdCssRules extends CssRules {
             'img.md': {},
             'code.md': {},
             'pre.md': {},
+            'table.md': {},
             'th.md': {},
             'td.md': {},
             'blockquote.md': {},
@@ -580,6 +654,7 @@ class MdCssRules extends CssRules {
         };
     }
 }
+
 
 
 
@@ -668,9 +743,13 @@ class MdFormatter extends Formatter {
             const compiled = this.compiler.compileParagraph(this.documentData.currentParagraph.innerText, this.documentData.references);
             this.documentData.currentParagraph.parentElement?.replaceChild(compiled.html, this.documentData.currentParagraph);
             this.documentData.currentParagraph = compiled.html;
+            Prism.highlightAll();
             if (compiled.reference) {
                 this.documentData.references[compiled.reference.name] = compiled.reference.data;
                 this.compiler.fixReferences([this.editor], compiled.reference);
+            }
+            if (compiled.html.tagName === 'TABLE') {
+                this.compiler.fixTable(compiled.html, compiled.html.previousSibling, compiled.html.nextSibling);
             }
         }
     }
@@ -1008,6 +1087,11 @@ darkMDFormatterTheme.rules[MdCss.blockCode] = {
     'padding': '16px',
     'background': 'rgba(220, 224, 228, 0.1) !important',
 };
+darkMDFormatterTheme.rules[MdCss.table] = {
+    'color': 'white',
+    'border-collapse': 'collapse',
+    'width': '100%',
+};
 darkMDFormatterTheme.rules[MdCss.tableHeader] = {
     'line-height': '1.5',
     'border-spacing': '0',
@@ -1015,15 +1099,15 @@ darkMDFormatterTheme.rules[MdCss.tableHeader] = {
     'text-align': 'center',
     'font-weight': 'bold',
     'padding': '6px 13px',
-    'border': '1px solid #dfe2e5',
+    'border': '1px solid white',
 };
 darkMDFormatterTheme.rules[MdCss.tableCell] = {
     'line-height': '1.5',
     'border-spacing': '0',
     'border-collapse': 'collapse',
-    'text-align': 'right',
+    'border': '1px solid white',
+    'text-align': 'left',
     'padding': '6px 13px',
-    'border': '1px solid #dfe2e5',
 };
 darkMDFormatterTheme.rules[MdCss.quote] = {
     'border-spacing': '0',
@@ -1161,6 +1245,8 @@ Markdown | Less | Pretty
 --- | --- | ---
 *Still* | \`renders\` | **nicely**
 1 | 2 | 3
+
+### And tables without headers
 
 And | tables
 without | headers

@@ -30,14 +30,21 @@ export class Compiler {
     const newReferences = startingReferences;
     const paragraphs = this.splitStringToParagraphs(text);
     const compiledElements: HTMLElement[] = [];
+
     for (const paragraph of paragraphs) {
       const compiled = this.compileParagraph(paragraph, newReferences);
-      compiledElements.push(compiled.html);
       if (compiled.reference) {
         newReferences[compiled.reference.name] = compiled.reference.data;
         this.fixReferences(compiledElements, compiled.reference);
       }
+      if (compiled.html.tagName === 'TABLE' && compiledElements.length > 1 &&
+          compiledElements[compiledElements.length - 1].tagName === 'TABLE') {
+        this.fixTable(compiled.html, compiledElements[compiledElements.length - 1]);
+      } else {
+        compiledElements.push(compiled.html);
+      }
     }
+
     return {
       html: compiledElements,
       references: newReferences,
@@ -106,7 +113,7 @@ export class Compiler {
    */
   private compileImage(paragraph: string, references: ReferenceDictionary): string {
     // Compile standard image tags
-    const imageRegex = /!\[(.*?)\]\((.*?) ("(.*?)")\)?/g;
+    const imageRegex = /!\[(.*?)\]\((.*?)( "(.*)")?\)/g;
     for (const match of paragraph.matchAll(imageRegex)) {
       const alt = match[1] !== undefined ? match[1] : '';
       const link = match[2] !== undefined ? match[2] : '';
@@ -122,8 +129,6 @@ export class Compiler {
       const ref = match[3] !== undefined ? match[3] : '';
       let link = '';
       let title = '';
-      console.log(match);
-      console.log(link.replace(/<.*?>/, ''));
       if (references[ref] !== undefined) {
         link = references[ref].link !== undefined ? references[ref].link : '';
         title = references[ref].title !== undefined ? references[ref].title : '';
@@ -163,6 +168,24 @@ export class Compiler {
       paragraph = paragraph.replace(match[0], htmlTag);
     }
 
+    return paragraph;
+  }
+
+  /** Parse tables
+   * @param {string} paragraph
+   * @param {ReferenceDictionary} references
+   * @return {string} html with compiled link tags
+   */
+  private compileTable(paragraph: string): string {
+    paragraph = paragraph.trim();
+    if (paragraph[0] === '|') {
+      paragraph = paragraph.substr(1);
+    }
+    if (paragraph[paragraph.length - 1] === '|') {
+      paragraph = paragraph.substr(0, paragraph.length - 2);
+    }
+    paragraph = '<table class="md"><tr><td class="md" >' + paragraph + '</td></tr></table>';
+    paragraph = paragraph.replace(/\|/g, '</td><td class="md">');
     return paragraph;
   }
 
@@ -256,10 +279,31 @@ export class Compiler {
       }
     }
 
+    if (paragraph.startsWith('```')) {
+      paragraph = paragraph.replace('```', '');
+      paragraph = paragraph.replace('```', '');
+      const languageMatch = paragraph.match(/^(.*)\n/);
+      let language = 'js';
+      if (languageMatch && languageMatch[1]) {
+        language = languageMatch[1];
+      }
+      paragraph = paragraph.replace(/.*\n/, '');
+      return {str:
+        `<pre><code class="language-${language}">` + paragraph + '</code></pre>',
+      };
+    }
+
+    // Parse table (don't do anything, as there's separate function for that)
+    if (paragraph.includes('|')) {
+      return {str: this.compileTable(paragraph)};
+    }
+
+    // Parse horizontal
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(paragraph)) {
       return {str: '<hr/>'};
     }
 
+    // Parse reference
     if (/^\[.*?\]:/.test(paragraph)) {
       const anchorRegex = /^\[(.*)\]:\s*([^"]*)(\s)?("(.*)")?/;
       const anchorParts = paragraph.match(anchorRegex);
@@ -277,6 +321,7 @@ export class Compiler {
       }
     }
 
+    // If everything fails it's normal text
     return {str: '<p>' + paragraph + '</p>'};
   }
 
@@ -299,6 +344,38 @@ export class Compiler {
         });
   }
 
+  /**
+   * @param {HTMLElement} currentElement table element
+   * @param {HTMLElement} prevSibling
+   * @param {HTMLElement} nextSibling
+   */
+  public fixTable(currentElement: HTMLElement, prevSibling?: HTMLElement | ChildNode | null, nextSibling?: HTMLElement | ChildNode | null): void {
+    if (currentElement.tagName !== 'TABLE') {
+      return;
+    }
+
+    if (prevSibling && prevSibling.nodeName === 'TABLE') {
+      for (const row of currentElement.childNodes) {
+        const trElement = row as HTMLElement;
+        prevSibling.appendChild(trElement);
+      }
+      if (currentElement.parentElement) {
+        currentElement.parentElement.removeChild(currentElement);
+      }
+      currentElement = prevSibling as HTMLElement;
+    }
+
+    if (nextSibling && nextSibling.nodeName === 'TABLE') { // TODO test
+      for (const row of nextSibling.childNodes) {
+        const trElement = row as HTMLElement;
+        currentElement.appendChild(trElement);
+      }
+      if (nextSibling.parentElement) {
+        nextSibling.parentElement.removeChild(nextSibling);
+      }
+    }
+  }
+
   /** Split a string to markdown paragraphs
    * @param {string} text markdown
    * @return {string[]} array of paragraphs
@@ -318,7 +395,26 @@ export class Compiler {
     const specialParagraphStart = /^(#{1,6} |\d+\. |\* |\+ |- |> )/;
     const horizontalLine = /^(-{3,}|\*{3,}|_{3,})$/;
     const anchor = /^\[.+\]:/;
+    const code = /^```/;
+    let insideCodeBlock = false;
     for (const line of lines) {
+      if (code.test(line)) {
+        paragraphBuffer += line;
+        if (insideCodeBlock) {
+          appendBuffer();
+        } else {
+          paragraphBuffer += '\n';
+        }
+        insideCodeBlock = !insideCodeBlock;
+        continue;
+      }
+
+      if (insideCodeBlock) {
+        paragraphBuffer += line + '\n';
+        continue;
+      }
+
+
       if (specialParagraphStart.test(line) || horizontalLine.test(line) ||
         anchor.test(line) || line.includes('|')) {
         appendBuffer();

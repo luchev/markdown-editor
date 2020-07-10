@@ -91,6 +91,11 @@ darkMDFormatterTheme.rules[MdCss.blockCode] = {
   'padding': '16px',
   'background': 'rgba(220, 224, 228, 0.1) !important',
 };
+darkMDFormatterTheme.rules[MdCss.table] = {
+  'color': 'white',
+  'border-collapse': 'collapse',
+  'width': '100%',
+};
 darkMDFormatterTheme.rules[MdCss.tableHeader] = {
   'line-height': '1.5',
   'border-spacing': '0',
@@ -98,15 +103,15 @@ darkMDFormatterTheme.rules[MdCss.tableHeader] = {
   'text-align': 'center',
   'font-weight': 'bold',
   'padding': '6px 13px',
-  'border': '1px solid #dfe2e5',
+  'border': '1px solid white',
 };
 darkMDFormatterTheme.rules[MdCss.tableCell] = {
   'line-height': '1.5',
   'border-spacing': '0',
   'border-collapse': 'collapse',
-  'text-align': 'right',
+  'border': '1px solid white',
+  'text-align': 'left',
   'padding': '6px 13px',
-  'border': '1px solid #dfe2e5',
 };
 darkMDFormatterTheme.rules[MdCss.quote] = {
   'border-spacing': '0',
@@ -252,6 +257,8 @@ Markdown | Less | Pretty
 --- | --- | ---
 *Still* | \`renders\` | **nicely**
 1 | 2 | 3
+
+### And tables without headers
 
 And | tables
 without | headers
