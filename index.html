@@ -9,5 +9,9 @@
     <div id="editor"></div>
     <script src="editor.js"></script>
     <script src="lib/prism.js"></script>
+    <script>
+        const editor = new Editor( 'editor', new MdFormatter(), customTheme );
+        editor.setContent( sampleMarkdownText );
+    </script>
 </body>
 </html>
