@@ -3,7 +3,7 @@
 Dynamic Markdown editor written in Typescript, compiled to a single JavaScript file. Example of how this editor works can be found [here](https://luchev.github.io/markdown-editor/).
 
 ## Getting started
-The most basic setup using the theme that comes bundled up with the editor (this code is taken directly from index.html):
+The most basic setup using the theme that comes bundled up with the editor (this code is taken directly from [index.html](https://github.com/luchev/markdown-editor/blob/master/index.html)):
 
 ```html
     <div id="editor"></div> <!-- Element that will become the editor, id is important -->
