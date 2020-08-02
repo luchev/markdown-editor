@@ -1224,4 +1224,3 @@ const customTheme = {
   additionalCssRules: darkMDFormatterTheme,
   editorTheme: darkEditorTheme,
 };
-console.log(customTheme);
