@@ -2,6 +2,8 @@
 
 Dynamic Markdown editor written in Typescript, compiled to a single JavaScript file. Example of how this editor works can be found [here](https://luchev.github.io/markdown-editor/).
 
+![](https://i.imgur.com/xKkAEff.png)
+
 ## Getting started
 The most basic setup using the theme that comes bundled up with the editor (this code is taken directly from [index.html](https://github.com/luchev/markdown-editor/blob/master/index.html)):
 
@@ -85,5 +87,9 @@ You can manually set or retrieve the content of the editor by using `setContent(
     </script>
 ```
 
+## Architecture
 
+The architecture is designed so the editr is modular. The **Theme** and **Formatter**, which also specifies the **Compiler for the editor** can be hot-swapped. In the Markdown example, the compiler has internal memory for references in the document.
+
+![](https://i.imgur.com/CTNwTLh.png)
 
